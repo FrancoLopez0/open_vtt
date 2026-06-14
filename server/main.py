@@ -82,9 +82,7 @@ app = FastAPI(title="Open VTT", version="0.1.0")
 
 # -- Static files -----------------------------------------------------------
 
-if CLIENT_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=str(CLIENT_DIST), html=True), name="frontend")
-else:
+if not CLIENT_DIST.is_dir():
     logger.warning(
         "Frontend dist not found at %s. Run 'npm run build' in client/ first.", CLIENT_DIST
     )
@@ -240,6 +238,26 @@ async def ws_player(websocket: WebSocket, token: str = "") -> None:
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
         await manager.broadcast_public({"type": "player_disconnected", "name": player_name})
+
+
+# ---------------------------------------------------------------------------
+# SPA Catch-all (Frontend Routing)
+# ---------------------------------------------------------------------------
+
+from fastapi.responses import FileResponse
+
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Catch-all route to serve the React SPA and its static assets."""
+    if not CLIENT_DIST.is_dir():
+        raise HTTPException(status_code=404, detail="Frontend not built")
+
+    path = CLIENT_DIST / full_path
+    if path.is_file():
+        return FileResponse(path)
+    
+    # Fallback to index.html for React Router
+    return FileResponse(CLIENT_DIST / "index.html")
 
 
 # ---------------------------------------------------------------------------
