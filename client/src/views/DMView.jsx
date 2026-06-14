@@ -20,7 +20,6 @@ export default function DMView() {
   const [chatInput, setChatInput] = useState('')
   const [players, setPlayers] = useState([])
   const [newPlayerName, setNewPlayerName] = useState('')
-  const [lastJoinUrl, setLastJoinUrl] = useState(null)
   const [creatingPlayer, setCreatingPlayer] = useState(false)
 
   const wsRef = useRef(null)
@@ -128,8 +127,6 @@ export default function DMView() {
         body: JSON.stringify({ name: newPlayerName.trim() }),
       })
       if (res.ok) {
-        const data = await res.json()
-        setLastJoinUrl(data.join_url)
         setNewPlayerName('')
         fetchPlayers()
       }
@@ -138,10 +135,7 @@ export default function DMView() {
     }
   }, [newPlayerName, hostToken, fetchPlayers])
 
-  // Copy join URL to clipboard
-  const copyUrl = useCallback(() => {
-    if (lastJoinUrl) navigator.clipboard.writeText(lastJoinUrl)
-  }, [lastJoinUrl])
+
 
   // --- Error: no token ---
   if (!hostToken) {
@@ -202,27 +196,27 @@ export default function DMView() {
               </button>
             </div>
 
-            {/* Last join URL */}
-            {lastJoinUrl && (
-              <div className="join-url-box" style={{ marginTop: 'var(--space-md)' }}>
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {lastJoinUrl}
-                </span>
-                <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} onClick={copyUrl}>
-                  Copy
-                </button>
-              </div>
-            )}
+
 
             {/* Player list */}
             {players.length > 0 && (
               <div className="player-list" style={{ marginTop: 'var(--space-md)' }}>
                 {players.map((p) => (
-                  <div key={p.token} className="player-item fade-in">
+                  <div key={p.token} className="player-item fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="player-name">{p.name}</span>
-                    <span className={`badge ${p.connected ? 'badge-connected' : 'badge-disconnected'}`}>
-                      {p.connected ? 'Online' : 'Offline'}
-                    </span>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button 
+                        className="btn btn-ghost" 
+                        style={{ padding: '2px 6px', fontSize: 10 }}
+                        onClick={() => navigator.clipboard.writeText(`http://${window.location.host}/player?token=${p.token}`)}
+                        title="Copy Join Link"
+                      >
+                        Copy Link
+                      </button>
+                      <span className={`badge ${p.connected ? 'badge-connected' : 'badge-disconnected'}`}>
+                        {p.connected ? 'Online' : 'Offline'}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
