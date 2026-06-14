@@ -166,6 +166,8 @@ class ConnectionManager:
             "plugin": plugin_name,
             "payload": payload,
         }
+
+        print(message)
         
         if target == "ALL":
             await self.broadcast_public(message)

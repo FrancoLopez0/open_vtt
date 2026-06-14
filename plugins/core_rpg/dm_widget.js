@@ -27,7 +27,7 @@ class CoreRPGDm extends HTMLElement {
       
       // Request sheets for all players whenever the list updates
       for (const p of this.players) {
-        this._requestSheet(p.name)
+        this._requestSheet(p.token) // Request using token, not name
       }
       
       this._render()
@@ -42,9 +42,9 @@ class CoreRPGDm extends HTMLElement {
     window.removeEventListener('vtt-players-update', this._playersHandler)
   }
 
-  _requestSheet(playerName) {
+  _requestSheet(playerToken) {
     window.dispatchEvent(new CustomEvent('send-ws', {
-      detail: { type: "plugin_message", plugin: "core_rpg", payload: { action: "get_sheet", target_player: playerName } }
+      detail: { type: "plugin_message", plugin: "core_rpg", payload: { action: "get_sheet", target_player: playerToken } }
     }))
   }
 
@@ -53,7 +53,7 @@ class CoreRPGDm extends HTMLElement {
     let hpCurrentTotal = 0;
     let hpMaxTotal = 0;
     for (const p of this.players) {
-      const sheet = this.sheets[p.name];
+      const sheet = this.sheets[p.token];
       if (sheet) {
         hpCurrentTotal += sheet.hp_current || 0;
         hpMaxTotal += sheet.hp_max || 0;
@@ -82,7 +82,7 @@ class CoreRPGDm extends HTMLElement {
       gridHtml = `<div class="text-white/40 italic text-sm">No players added yet.</div>`;
     } else {
       const cardsHtml = this.players.map(p => {
-        const sheet = this.sheets[p.name];
+        const sheet = this.sheets[p.token];
         
         let sheetHtml = '';
         if (sheet) {

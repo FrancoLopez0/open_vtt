@@ -38,6 +38,7 @@ class CoreRPGPlugin:
             # but kernel.send_message is an async coroutine. 
             # In a real architecture, hookspecs would be async.
             # For now, since hookspecs are sync in pluggy, we must schedule the task.
+            
             import asyncio
             try:
                 loop = asyncio.get_running_loop()
