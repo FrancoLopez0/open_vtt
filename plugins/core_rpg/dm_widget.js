@@ -35,6 +35,11 @@ class CoreRPGDm extends HTMLElement {
 
     window.addEventListener('plugin-message', this._msgHandler)
     window.addEventListener('vtt-players-update', this._playersHandler)
+
+    // Check if we missed the initial event due to async loading
+    if (window.__VTT_PLAYERS__) {
+      this._playersHandler({ detail: window.__VTT_PLAYERS__ })
+    }
   }
 
   disconnectedCallback() {

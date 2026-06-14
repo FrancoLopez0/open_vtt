@@ -71,6 +71,8 @@ export default function DMView() {
       if (res.ok) {
         const playersData = await res.json()
         setPlayers(playersData)
+        // Store globally for plugins that load asynchronously after the event fires
+        window.__VTT_PLAYERS__ = playersData
         // Notify plugins that the player list has updated
         window.dispatchEvent(new CustomEvent('vtt-players-update', { detail: playersData }))
       }
