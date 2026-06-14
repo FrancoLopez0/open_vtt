@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from hookspecs import hookimpl
+from server.kernel import hookimpl
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,9 @@ class CoreRPGPlugin:
     def _empty_sheet(self, name: str) -> dict[str, Any]:
         return {
             "name": name,
+            "race": "Human",
+            "class_name": "Fighter",
+            "level": 1,
             "hp_current": 10,
             "hp_max": 10,
             "stats": [

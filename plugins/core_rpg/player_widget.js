@@ -8,6 +8,9 @@ class CoreRPGPlayer extends HTMLElement {
     this.playerName = ""
     this.sheet = {
       name: "",
+      race: "",
+      class_name: "",
+      level: 1,
       hp_current: 0,
       hp_max: 0,
       stats: [],
@@ -52,6 +55,9 @@ class CoreRPGPlayer extends HTMLElement {
   _save() {
     // Gather data from DOM
     this.sheet.name = this.shadowRoot.getElementById('char-name').value
+    this.sheet.race = this.shadowRoot.getElementById('char-race').value
+    this.sheet.class_name = this.shadowRoot.getElementById('char-class').value
+    this.sheet.level = Number(this.shadowRoot.getElementById('char-level').value)
     this.sheet.hp_current = Number(this.shadowRoot.getElementById('hp-curr').value)
     this.sheet.hp_max = Number(this.shadowRoot.getElementById('hp-max').value)
     this.sheet.inventory = this.shadowRoot.getElementById('inventory').value
@@ -162,6 +168,21 @@ class CoreRPGPlayer extends HTMLElement {
           <label>Character Name</label>
           <input type="text" id="char-name" />
         </div>
+
+        <div class="row">
+          <div class="field" style="flex:1">
+            <label>Race</label>
+            <input type="text" id="char-race" />
+          </div>
+          <div class="field" style="flex:1">
+            <label>Class</label>
+            <input type="text" id="char-class" />
+          </div>
+          <div class="field" style="width:60px">
+            <label>Level</label>
+            <input type="number" id="char-level" />
+          </div>
+        </div>
         
         <div class="row">
           <div class="field" style="flex:1">
@@ -197,6 +218,9 @@ class CoreRPGPlayer extends HTMLElement {
 
   _updateDOM() {
     this.shadowRoot.getElementById('char-name').value = this.sheet.name || ""
+    this.shadowRoot.getElementById('char-race').value = this.sheet.race || ""
+    this.shadowRoot.getElementById('char-class').value = this.sheet.class_name || ""
+    this.shadowRoot.getElementById('char-level').value = this.sheet.level || 1
     this.shadowRoot.getElementById('hp-curr').value = this.sheet.hp_current || 0
     this.shadowRoot.getElementById('hp-max').value = this.sheet.hp_max || 0
     this.shadowRoot.getElementById('inventory').value = this.sheet.inventory || ""
