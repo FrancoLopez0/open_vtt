@@ -144,15 +144,26 @@ export default function DMView() {
 
     ws.onclose = () => {
       setStatus('disconnected')
-      appendLog({ type: 'system', text: 'Disconnected from game session.' })
+      appendLog({ type: 'system', text: 'Disconnected from game session. Reconnecting in 3s...' })
+      // Auto-reconnect logic
+      setTimeout(() => {
+        if (wsRef.current) {
+          wsRef.current = null;
+          // Trigger a re-render to run the useEffect again
+          setStatus('connecting')
+        }
+      }, 3000)
     }
 
-    ws.onerror = () => setStatus('error')
+    ws.onerror = () => {
+      setStatus('error')
+    }
 
     return () => {
       ws.close()
+      wsRef.current = null
     }
-  }, [hostToken, appendLog, fetchPlayers])
+  }, [hostToken, appendLog, fetchPlayers, status])
 
   // Bridge custom events from Web Components (plugins) to the WebSocket
   useEffect(() => {

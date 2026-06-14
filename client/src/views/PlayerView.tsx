@@ -106,18 +106,27 @@ export default function PlayerView() {
         setStatus('rejected')
       } else {
         setStatus('disconnected')
-        appendLog({ type: 'system', text: 'Disconnected from session.' })
+        appendLog({ type: 'system', text: 'Disconnected from game session. Reconnecting in 3s...' })
+        // Auto-reconnect logic
+        setTimeout(() => {
+          if (wsRef.current) {
+            wsRef.current = null;
+            // Trigger a re-render to run the useEffect again
+            setStatus('connecting')
+          }
+        }, 3000)
       }
     }
 
     ws.onerror = () => {
-      // onclose will fire after onerror and set the status
+      setStatus('error')
     }
 
     return () => {
       ws.close()
+      wsRef.current = null
     }
-  }, [playerToken, appendLog])
+  }, [playerToken, appendLog, status])
 
   // Bridge custom events from Web Components (plugins) to the WebSocket
   useEffect(() => {
