@@ -29,7 +29,7 @@ export default function PluginSlot({ role }) {
     const loaded = new Set()
 
     // Collect already-injected script srcs to avoid duplicates
-    document.querySelectorAll('script[data-plugin]').forEach((s) => loaded.add(s.src))
+    document.querySelectorAll('script[data-plugin]').forEach((s) => loaded.add((s as HTMLScriptElement).src))
 
     const elements = []
 
