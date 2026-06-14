@@ -4,8 +4,8 @@
 class CoreRPGDm extends HTMLElement {
   constructor() {
     super()
-    this.attachShadow({ mode: 'open' })
     this.sheets = {} // Map of playerName -> sheetData
+    this.players = [] // List of player objects
   }
 
   connectedCallback() {
@@ -17,15 +17,29 @@ class CoreRPGDm extends HTMLElement {
         const payload = data.payload
         if (payload.action === "sheet_data" || payload.action === "sheet_updated") {
           this.sheets[payload.player] = payload.sheet
-          this._updateDOM()
+          this._render()
         }
       }
     }
+    
+    this._playersHandler = (e) => {
+      this.players = e.detail || []
+      
+      // Request sheets for all players whenever the list updates
+      for (const p of this.players) {
+        this._requestSheet(p.name)
+      }
+      
+      this._render()
+    }
+
     window.addEventListener('plugin-message', this._msgHandler)
+    window.addEventListener('vtt-players-update', this._playersHandler)
   }
 
   disconnectedCallback() {
     window.removeEventListener('plugin-message', this._msgHandler)
+    window.removeEventListener('vtt-players-update', this._playersHandler)
   }
 
   _requestSheet(playerName) {
@@ -35,95 +49,100 @@ class CoreRPGDm extends HTMLElement {
   }
 
   _render() {
-    this.shadowRoot.innerHTML = `
-      <style>
-        :host {
-          display: block;
-          font-family: 'Inter', system-ui, sans-serif;
-          color: #e8e4dc;
-          margin-top: 16px;
-        }
-        .widget {
-          background: #13131f;
-          border: 1px solid rgba(179, 129, 53, 0.2);
-          border-radius: 12px;
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-        h4 {
-          font-family: 'Cinzel', Georgia, serif;
-          color: #e8c46a;
-          font-size: 14px;
-          margin: 0;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          border-bottom: 1px solid rgba(179, 129, 53, 0.2);
-          padding-bottom: 8px;
-        }
-        .sheet-card {
-          background: #080810;
-          border: 1px solid rgba(255,255,255,0.1);
-          padding: 8px;
-          border-radius: 6px;
-          font-size: 12px;
-        }
-        .sheet-title {
-          font-weight: bold;
-          color: #b38135;
-          margin-bottom: 4px;
-        }
-        .hp-bar { color: #e74c3c; font-weight: bold; }
-        .refresh-btn {
-          background: #1a1a2e;
-          border: 1px solid rgba(179, 129, 53, 0.4);
-          color: #e8c46a;
-          padding: 4px 8px;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 10px;
-          margin-top: 8px;
-        }
-        .refresh-btn:hover { background: #b38135; color: #000; }
-        input.dm-fetch {
-          background: #000; color: #fff; border: 1px solid #333; padding: 4px; font-size: 10px; width: 80px;
-        }
-      </style>
-
-      <div class="widget">
-        <h4>Player Sheets</h4>
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-          <input type="text" id="fetch-name" class="dm-fetch" placeholder="Player Name" />
-          <button id="fetch-btn" class="refresh-btn" style="margin:0;">Fetch</button>
-        </div>
-        <div id="sheets-container"></div>
-      </div>
-    `
-
-    this.shadowRoot.getElementById('fetch-btn').addEventListener('click', () => {
-      const name = this.shadowRoot.getElementById('fetch-name').value
-      if (name) this._requestSheet(name)
-    })
-  }
-
-  _updateDOM() {
-    const container = this.shadowRoot.getElementById('sheets-container')
-    container.innerHTML = ""
-
-    for (const [playerName, sheet] of Object.entries(this.sheets)) {
-      const card = document.createElement('div')
-      card.className = "sheet-card"
-      
-      const statsStr = (sheet.stats || []).map(s => \`\${s.name}: \${s.value}\`).join(' | ')
-      
-      card.innerHTML = \`
-        <div class="sheet-title">\${playerName} (\${sheet.name || 'Unnamed'})</div>
-        <div class="hp-bar">HP: \${sheet.hp_current} / \${sheet.hp_max}</div>
-        <div style="margin-top:4px; font-style:italic;">\${statsStr}</div>
-      \`
-      container.appendChild(card)
+    // Calculate total HP
+    let hpCurrentTotal = 0;
+    let hpMaxTotal = 0;
+    for (const p of this.players) {
+      const sheet = this.sheets[p.name];
+      if (sheet) {
+        hpCurrentTotal += sheet.hp_current || 0;
+        hpMaxTotal += sheet.hp_max || 0;
+      }
     }
+
+    // Party Health
+    const partyHealthHtml = `
+      <section class="bg-[#13131f] border border-[#b38135]/30 rounded-xl p-6 shadow-lg flex items-center justify-between mb-8">
+        <div>
+          <h2 class="text-xl font-cinzel text-[#e8c46a] uppercase tracking-widest mb-1">Party Health</h2>
+          <p class="text-sm text-white/60">Total combined HP of connected heroes</p>
+        </div>
+        <div class="text-right">
+          <div class="text-4xl font-bold text-white">
+            ${hpCurrentTotal}
+            <span class="text-lg text-white/50 ml-1">/ ${hpMaxTotal}</span>
+          </div>
+        </div>
+      </section>
+    `;
+
+    // Players Grid
+    let gridHtml = '';
+    if (this.players.length === 0) {
+      gridHtml = `<div class="text-white/40 italic text-sm">No players added yet.</div>`;
+    } else {
+      const cardsHtml = this.players.map(p => {
+        const sheet = this.sheets[p.name];
+        
+        let sheetHtml = '';
+        if (sheet) {
+          const hpPercent = Math.max(0, Math.min(100, (sheet.hp_current / Math.max(1, sheet.hp_max)) * 100));
+          sheetHtml = `
+            <div class="bg-[#080810] border border-white/5 rounded-lg p-3">
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-xs uppercase text-white/60">Health</span>
+                <span class="text-sm font-bold text-white">${sheet.hp_current} / ${sheet.hp_max}</span>
+              </div>
+              <div class="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                <div class="bg-green-500 h-full transition-all" style="width: ${hpPercent}%"></div>
+              </div>
+            </div>
+          `;
+        } else {
+          sheetHtml = `
+            <div class="text-xs text-white/50 italic py-2 bg-[#080810] border border-white/5 rounded-lg text-center">
+              No character sheet data yet.
+            </div>
+          `;
+        }
+
+        const subtitleHtml = sheet 
+          ? `<span class="text-sm text-[#b38135] uppercase tracking-wider font-semibold">${sheet.race} ${sheet.class_name} • Lvl ${sheet.level}</span>`
+          : '';
+
+        const badgeClass = p.connected ? 'badge-connected' : 'badge-disconnected';
+        const badgeText = p.connected ? 'Online' : 'Offline';
+
+        return `
+          <div class="bg-[#13131f] border border-[#b38135]/30 p-5 rounded-xl flex flex-col gap-4 shadow-lg relative">
+            <div class="flex justify-between items-start">
+              <div>
+                <span class="font-bold text-xl text-white block">${p.name}</span>
+                ${subtitleHtml}
+              </div>
+              <span class="badge ${badgeClass}">${badgeText}</span>
+            </div>
+            
+            ${sheetHtml}
+
+            <div class="mt-auto pt-3 flex justify-between items-center border-t border-white/5">
+              <button class="btn btn-ghost text-xs py-1 px-2" onclick="navigator.clipboard.writeText('${p.join_url}')">
+                Copy Join Link
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      gridHtml = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">${cardsHtml}</div>`;
+    }
+
+    this.innerHTML = `
+      <div class="w-full">
+        ${partyHealthHtml}
+        <section>${gridHtml}</section>
+      </div>
+    `;
   }
 }
 

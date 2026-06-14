@@ -45,7 +45,6 @@ export default function DMView() {
   const [chatInput, setChatInput] = useState('')
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [players, setPlayers] = useState<Player[]>([])
-  const [sheets, setSheets] = useState<Record<string, CharacterSheet>>({})
   const [newPlayerName, setNewPlayerName] = useState('')
   const [creatingPlayer, setCreatingPlayer] = useState(false)
   const [activeTab, setActiveTab] = useState<'dashboard' | 'combat'>('dashboard')
@@ -72,17 +71,8 @@ export default function DMView() {
       if (res.ok) {
         const playersData = await res.json()
         setPlayers(playersData)
-        
-        // Request latest character sheets for all players from the plugin
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          playersData.forEach((p: Player) => {
-            wsRef.current.send(JSON.stringify({
-              type: 'plugin_message',
-              plugin: 'core_rpg',
-              payload: { action: 'get_sheet', target_player: p.name }
-            }))
-          })
-        }
+        // Notify plugins that the player list has updated
+        window.dispatchEvent(new CustomEvent('vtt-players-update', { detail: playersData }))
       }
     } catch {
       // silently retry on next event
@@ -131,13 +121,7 @@ export default function DMView() {
             fetchPlayers()
             break
           case 'plugin_message':
-            // Intercept core_rpg sheet data to render it in React
-            if (data.plugin === 'core_rpg' && (data.payload.action === 'sheet_data' || data.payload.action === 'sheet_updated')) {
-              setSheets((prev) => ({
-                ...prev,
-                [data.payload.player]: data.payload.sheet,
-              }))
-            }
+            // Route custom plugin messages to the DOM so Web Components can catch them
             window.dispatchEvent(new CustomEvent('plugin-message', { detail: data }))
             break
           default:
@@ -263,22 +247,8 @@ export default function DMView() {
           
           {activeTab === 'dashboard' ? (
             <>
-              {/* Party Overview */}
-              <section className="bg-[#13131f] border border-[#b38135]/30 rounded-xl p-6 shadow-lg flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-cinzel text-[#e8c46a] uppercase tracking-widest mb-1">Party Health</h2>
-                  <p className="text-sm text-white/60">Total combined HP of connected heroes</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-4xl font-bold text-white">
-                    {players.reduce((sum, p) => sum + (sheets[p.name]?.hp_current || 0), 0)}
-                    <span className="text-lg text-white/50 ml-1">/ {players.reduce((sum, p) => sum + (sheets[p.name]?.hp_max || 0), 0)}</span>
-                  </div>
-                </div>
-              </section>
-
               {/* Add Player */}
-              <div className="flex gap-2 max-w-md">
+              <div className="flex gap-2 max-w-md mb-8">
                 <input
                   type="text"
                   placeholder="New Player name…"
@@ -296,67 +266,8 @@ export default function DMView() {
                 </button>
               </div>
 
-              {/* Players Grid */}
-              <section>
-                {players.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {players.map((p) => {
-                      const sheet = sheets[p.name]
-                      return (
-                        <div key={p.token} className="bg-[#13131f] border border-[#b38135]/30 p-5 rounded-xl flex flex-col gap-4 shadow-lg relative">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <span className="font-bold text-xl text-white block">{p.name}</span>
-                              {sheet && (
-                                <span className="text-sm text-[#b38135] uppercase tracking-wider font-semibold">
-                                  {sheet.race} {sheet.class_name} • Lvl {sheet.level}
-                                </span>
-                              )}
-                            </div>
-                            <span className={`badge ${p.connected ? 'badge-connected' : 'badge-disconnected'}`}>
-                              {p.connected ? 'Online' : 'Offline'}
-                            </span>
-                          </div>
-                          
-                          {sheet ? (
-                            <div className="bg-[#080810] border border-white/5 rounded-lg p-3">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="text-xs uppercase text-white/60">Health</span>
-                                <span className="text-sm font-bold text-white">{sheet.hp_current} / {sheet.hp_max}</span>
-                              </div>
-                              <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-                                <div 
-                                  className="bg-green-500 h-full transition-all" 
-                                  style={{ width: `${Math.max(0, Math.min(100, (sheet.hp_current / Math.max(1, sheet.hp_max)) * 100))}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-xs text-white/50 italic py-2 bg-[#080810] border border-white/5 rounded-lg text-center">
-                              No character sheet data yet.
-                            </div>
-                          )}
-
-                          <div className="mt-auto pt-3 flex justify-between items-center border-t border-white/5">
-                            <button 
-                              className="btn btn-ghost text-xs py-1 px-2"
-                              onClick={() => navigator.clipboard.writeText(p.join_url)}
-                            >
-                              Copy Join Link
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-white/40 italic text-sm">No players added yet.</div>
-                )}
-              </section>
-
               {/* Plugin Table Area */}
-              <section className="hidden">
-                {/* Keep PluginSlot mounted in DOM to listen to events, but we display its data natively now */}
+              <section>
                 <PluginSlot role="dm" />
               </section>
             </>
