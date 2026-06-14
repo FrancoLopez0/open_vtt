@@ -69,7 +69,21 @@ export default function DMView() {
       const res = await fetch('/api/players', {
         headers: { 'X-Host-Token': hostToken },
       })
-      if (res.ok) setPlayers(await res.json())
+      if (res.ok) {
+        const playersData = await res.json()
+        setPlayers(playersData)
+        
+        // Request latest character sheets for all players from the plugin
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          playersData.forEach((p: Player) => {
+            wsRef.current.send(JSON.stringify({
+              type: 'plugin_message',
+              plugin: 'core_rpg',
+              payload: { action: 'get_sheet', target_player: p.token }
+            }))
+          })
+        }
+      }
     } catch {
       // silently retry on next event
     }

@@ -62,9 +62,9 @@ class CoreRPGPlugin:
             except RuntimeError:
                 pass
 
-    def _empty_sheet(self, name: str) -> dict[str, Any]:
+    def _empty_sheet(self, token: str) -> dict[str, Any]:
         return {
-            "name": name,
+            "name": "",
             "race": "Human",
             "class_name": "Fighter",
             "level": 1,
