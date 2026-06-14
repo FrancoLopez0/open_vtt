@@ -111,11 +111,7 @@ def ensure_firewall_rule(port: int) -> None:
 # Core services
 # ---------------------------------------------------------------------------
 
-kernel = Kernel(plugins_dir=PLUGINS_DIR)
-manager = ConnectionManager(host_token=HOST_TOKEN)
-
-# Inject the send method into the kernel so plugins can respond
-kernel.send_message = manager.send_plugin_message
+from server.state import manager, kernel
 
 # ---------------------------------------------------------------------------
 # FastAPI application

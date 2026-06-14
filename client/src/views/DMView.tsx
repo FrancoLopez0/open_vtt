@@ -107,6 +107,7 @@ export default function DMView() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
+        console.log("[DMView WS] Received message:", data)
 
         switch (data.type) {
           case 'chat':

@@ -123,15 +123,20 @@ class ConnectionManager:
         targets: list[WebSocket] = []
         if self.host_connection:
             targets.append(self.host_connection)
-        for info in self.players.values():
+            print(f"[WS Manager] Added host to targets")
+        for token, info in self.players.items():
             if info.websocket:
                 targets.append(info.websocket)
+                print(f"[WS Manager] Added player {token} to targets")
 
+        print(f"[WS Manager] Broadcasting to {len(targets)} targets")
         for ws in targets:
             try:
                 await ws.send_json(message)
-            except Exception:
+                print(f"[WS Manager] Successfully sent to a websocket")
+            except Exception as e:
                 logger.exception("Failed to send public message to a client")
+                print(f"[WS Manager] Exception sending: {e}")
 
     async def send_to_host(self, message: dict[str, Any]) -> None:
         """Send a message exclusively to the DM (host) WebSocket.

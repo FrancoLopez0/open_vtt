@@ -13,6 +13,7 @@ class CoreRPGDm extends HTMLElement {
 
     this._msgHandler = (e) => {
       const data = e.detail
+      console.log("[DM Widget] Received plugin message:", data)
       if (data.plugin === "core_rpg") {
         const payload = data.payload
         if (payload.action === "sheet_data" || payload.action === "sheet_updated") {
@@ -23,6 +24,7 @@ class CoreRPGDm extends HTMLElement {
     }
     
     this._playersHandler = (e) => {
+      console.log("[DM Widget] Received players update:", e.detail)
       this.players = e.detail || []
       
       // Request sheets for all players whenever the list updates

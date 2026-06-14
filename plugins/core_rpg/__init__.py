@@ -12,6 +12,7 @@ class CoreRPGPlugin:
 
     @hookimpl
     def on_plugin_message(self, sender: str, plugin: str, payload: dict) -> None:
+        print(f"=== [CoreRPGPlugin] Received message from {sender} for plugin {plugin}: {payload}")
         if plugin != "core_rpg":
             return
 
@@ -26,7 +27,7 @@ class CoreRPGPlugin:
             logger.info("Saved character sheet for %s", target_player)
             
             # Broadcast to DM and the specific player that the sheet was updated
-            from server.main import kernel
+            from server.state import kernel
             
             # Notify everyone to re-fetch if they are looking at it, or just push it
             update_msg = {
@@ -34,6 +35,8 @@ class CoreRPGPlugin:
                 "player": target_player,
                 "sheet": sheet_data
             }
+            print(f"=== [CoreRPGPlugin] Broadcasting update for {target_player}: {update_msg}")
+            
             # Fire-and-forget async calls from a sync hook requires care, 
             # but kernel.send_message is an async coroutine. 
             # In a real architecture, hookspecs would be async.
@@ -51,7 +54,9 @@ class CoreRPGPlugin:
             target_player = payload.get("target_player", sender)
             sheet_data = self.sheets.get(target_player, self._empty_sheet(target_player))
             
-            from server.main import kernel
+            print(f"=== [CoreRPGPlugin] {sender} requested sheet for {target_player}. Returning: {sheet_data}")
+            
+            from server.state import kernel
             import asyncio
             try:
                 loop = asyncio.get_running_loop()
