@@ -37,15 +37,15 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: React Frontend
 
-- [ ] 2.1 Create `client/package.json` with deps: `react@18`, `react-dom@18`, `react-router-dom@6` + devDeps: `vite`, `@vitejs/plugin-react`
-- [ ] 2.2 Create `client/vite.config.js` — React plugin + dev server proxy: `/api` and `/ws` → `http://localhost:8000` with `ws: true`
-- [ ] 2.3 Create `client/index.html` — minimal Vite entry HTML with `<div id="root">` and script tag for `src/main.jsx`
-- [ ] 2.4 Create `client/src/main.jsx` — `ReactDOM.createRoot(document.getElementById('root')).render(<App />)`
-- [ ] 2.5 Create `client/src/App.jsx` — `BrowserRouter` with routes: `/dm` → `DMView`, `/player` → `PlayerView`, `/` → `<Navigate to="/player" />`
-- [ ] 2.6 Create `client/src/App.css` — dark fantasy base styles: CSS variables, dark background (`#0d0d0f`), gold accent (`#b38135`), base typography
-- [ ] 2.7 Create `client/src/components/PluginSlot.jsx` — `useEffect` fetches `/api/plugins`, filters by `role` prop (`dm_widget` or `player_widget`), injects `<script>` tags once, renders custom element tags via `useRef` + `innerHTML`
-- [ ] 2.8 Create `client/src/views/DMView.jsx` — reads `?token` from `useSearchParams`, opens WS to `/ws/host?token=`, shows connection status + player manager panel (calls `POST /api/players`, displays join URL) + `<PluginSlot role="dm" />`
-- [ ] 2.9 Create `client/src/views/PlayerView.jsx` — reads `?token` from `useSearchParams`, opens WS to `/ws/player?token=`, handles close code 4001 with error screen, shows `<PluginSlot role="player" />`
+- [x] 2.1 Create `client/package.json` with deps: `react@18`, `react-dom@18`, `react-router-dom@6` + devDeps: `vite`, `@vitejs/plugin-react`
+- [x] 2.2 Create `client/vite.config.js` — React plugin + dev server proxy: `/api` and `/ws` → `http://localhost:8000` with `ws: true`
+- [x] 2.3 Create `client/index.html` — minimal Vite entry HTML with `<div id="root">` and script tag for `src/main.jsx`
+- [x] 2.4 Create `client/src/main.jsx` — `ReactDOM.createRoot(document.getElementById('root')).render(<App />)`
+- [x] 2.5 Create `client/src/App.jsx` — `BrowserRouter` with routes: `/dm` → `DMView`, `/player` → `PlayerView`, `/` → `<Navigate to="/player" />`
+- [x] 2.6 Create `client/src/App.css` — dark fantasy base styles: CSS variables, dark background (`#0d0d0f`), gold accent (`#b38135`), base typography
+- [x] 2.7 Create `client/src/components/PluginSlot.jsx` — `useEffect` fetches `/api/plugins`, filters by `role` prop (`dm_widget` or `player_widget`), injects `<script>` tags once, renders custom element tags via `useRef` + `innerHTML`
+- [x] 2.8 Create `client/src/views/DMView.jsx` — reads `?token` from `useSearchParams`, opens WS to `/ws/host?token=`, shows connection status + player manager panel (calls `POST /api/players`, displays join URL) + `<PluginSlot role="dm" />`
+- [x] 2.9 Create `client/src/views/PlayerView.jsx` — reads `?token` from `useSearchParams`, opens WS to `/ws/player?token=`, handles close code 4001 with error screen, shows `<PluginSlot role="player" />`
 
 ## Phase 3: Example Plugin
 

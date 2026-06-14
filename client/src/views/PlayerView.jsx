@@ -1,0 +1,200 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import PluginSlot from '../components/PluginSlot.jsx'
+
+const WS_URL = (token) =>
+  `ws://${window.location.host}/ws/player?token=${encodeURIComponent(token)}`
+
+/**
+ * PlayerView — the player's browser interface.
+ *
+ * Loaded at /player?token=<player_token> in any browser on the LAN.
+ * Connects to the player WebSocket. Tokens rejected with code 4001
+ * show a clear error screen rather than a blank page.
+ */
+export default function PlayerView() {
+  const [searchParams] = useSearchParams()
+  const playerToken = searchParams.get('token') ?? ''
+
+  const [status, setStatus] = useState('connecting') // 'connecting' | 'connected' | 'rejected' | 'disconnected'
+  const [playerName, setPlayerName] = useState(null)
+  const [log, setLog] = useState([])
+  const [chatInput, setChatInput] = useState('')
+
+  const wsRef = useRef(null)
+  const logEndRef = useRef(null)
+
+  // Auto-scroll chat log
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [log])
+
+  const appendLog = useCallback((entry) => {
+    setLog((prev) => [...prev, { id: Date.now() + Math.random(), ...entry }])
+  }, [])
+
+  // WebSocket lifecycle
+  useEffect(() => {
+    if (!playerToken) {
+      setStatus('rejected')
+      return
+    }
+
+    const ws = new WebSocket(WS_URL(playerToken))
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      // Status will update on first server message or stay 'connecting' briefly
+      appendLog({ type: 'system', text: 'Joining session…' })
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+
+        switch (data.type) {
+          case 'player_connected':
+            // Server echoes the name back when we connect
+            setStatus('connected')
+            setPlayerName(data.name)
+            appendLog({ type: 'system', text: `You joined as ${data.name}.` })
+            break
+          case 'chat':
+            appendLog({ type: 'chat', sender: data.sender, text: data.message })
+            break
+          case 'dice_roll':
+            appendLog({
+              type: 'roll',
+              sender: data.roller,
+              text: `rolled ${data.result}`,
+            })
+            break
+          case 'host_connected':
+            appendLog({ type: 'system', text: 'The Dungeon Master has entered the session.' })
+            break
+          case 'host_disconnected':
+            appendLog({ type: 'system', text: 'The Dungeon Master disconnected.' })
+            break
+          case 'player_disconnected':
+            appendLog({ type: 'system', text: `${data.name} left the session.` })
+            break
+          default:
+            break
+        }
+      } catch {
+        // ignore malformed messages
+      }
+    }
+
+    ws.onclose = (event) => {
+      if (event.code === 4001) {
+        setStatus('rejected')
+      } else {
+        setStatus('disconnected')
+        appendLog({ type: 'system', text: 'Disconnected from session.' })
+      }
+    }
+
+    ws.onerror = () => {
+      // onclose will fire after onerror and set the status
+    }
+
+    return () => ws.close()
+  }, [playerToken, appendLog])
+
+  // Send chat message
+  const sendChat = useCallback(() => {
+    if (!chatInput.trim() || wsRef.current?.readyState !== WebSocket.OPEN) return
+    wsRef.current.send(JSON.stringify({ type: 'chat', message: chatInput.trim() }))
+    setChatInput('')
+  }, [chatInput])
+
+  // --- Error: no token or rejected ---
+  if (!playerToken || status === 'rejected') {
+    return (
+      <div className="error-screen">
+        <h1>Invalid Token</h1>
+        <p>
+          This link is not valid or has expired.
+          <br />
+          Ask your Dungeon Master for a new join link.
+        </p>
+      </div>
+    )
+  }
+
+  const statusClass =
+    status === 'connected'
+      ? 'badge-connected'
+      : status === 'disconnected'
+      ? 'badge-disconnected'
+      : 'badge-waiting'
+
+  const statusLabel =
+    status === 'connected'
+      ? 'Connected'
+      : status === 'disconnected'
+      ? 'Disconnected'
+      : 'Connecting…'
+
+  return (
+    <div className="layout-full">
+      {/* Top bar */}
+      <div className="topbar">
+        <span className="topbar-title">
+          🎲 Open VTT{playerName ? ` — ${playerName}` : ''}
+        </span>
+        <span className={`badge ${statusClass}`}>{statusLabel}</span>
+      </div>
+
+      {/* Main layout */}
+      <div className="layout-sidebar" style={{ flex: 1, minHeight: 0 }}>
+        {/* Sidebar: plugin widgets */}
+        <aside className="sidebar">
+          <PluginSlot role="player" />
+        </aside>
+
+        {/* Chat area */}
+        <div className="layout-main">
+          <div className="chat-log">
+            {log.map((entry) => (
+              <div
+                key={entry.id}
+                className={`chat-message fade-in ${entry.type === 'roll' ? 'is-roll' : ''}`}
+              >
+                <span
+                  className={`chat-sender ${
+                    entry.sender === 'DM' ? 'is-dm' : entry.type === 'system' ? 'is-system' : ''
+                  }`}
+                >
+                  {entry.type === 'system' ? 'System' : entry.sender}
+                </span>
+                <span className="chat-text">{entry.text}</span>
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+
+          <div className="chat-input-row">
+            <input
+              type="text"
+              placeholder="Send a message…"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+              style={{ flex: 1 }}
+              disabled={status !== 'connected'}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={sendChat}
+              disabled={!chatInput.trim() || status !== 'connected'}
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
