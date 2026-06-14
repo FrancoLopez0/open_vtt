@@ -79,7 +79,7 @@ export default function DMView() {
             wsRef.current.send(JSON.stringify({
               type: 'plugin_message',
               plugin: 'core_rpg',
-              payload: { action: 'get_sheet', target_player: p.token }
+              payload: { action: 'get_sheet', target_player: p.name }
             }))
           })
         }
@@ -271,8 +271,8 @@ export default function DMView() {
                 </div>
                 <div className="text-right">
                   <div className="text-4xl font-bold text-white">
-                    {players.reduce((sum, p) => sum + (sheets[p.token]?.hp_current || 0), 0)}
-                    <span className="text-lg text-white/50 ml-1">/ {players.reduce((sum, p) => sum + (sheets[p.token]?.hp_max || 0), 0)}</span>
+                    {players.reduce((sum, p) => sum + (sheets[p.name]?.hp_current || 0), 0)}
+                    <span className="text-lg text-white/50 ml-1">/ {players.reduce((sum, p) => sum + (sheets[p.name]?.hp_max || 0), 0)}</span>
                   </div>
                 </div>
               </section>
@@ -301,7 +301,7 @@ export default function DMView() {
                 {players.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {players.map((p) => {
-                      const sheet = sheets[p.token]
+                      const sheet = sheets[p.name]
                       return (
                         <div key={p.token} className="bg-[#13131f] border border-[#b38135]/30 p-5 rounded-xl flex flex-col gap-4 shadow-lg relative">
                           <div className="flex justify-between items-start">
