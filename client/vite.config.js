@@ -6,15 +6,15 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:20800',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://localhost:20800',
         ws: true,
       },
       '/plugins': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:20800',
         changeOrigin: true,
       },
     },

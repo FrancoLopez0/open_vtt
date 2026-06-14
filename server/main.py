@@ -66,7 +66,7 @@ def get_lan_ip() -> str:
 
 
 LAN_IP: str = get_lan_ip()
-PORT: int = 8000
+PORT: int = 20800
 
 # ---------------------------------------------------------------------------
 # Firewall automation (Windows)
