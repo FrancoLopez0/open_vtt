@@ -23,6 +23,7 @@ export default function PlayerView() {
   const [isChatOpen, setIsChatOpen] = useState(false)
 
   const wsRef = useRef(null)
+  const messageQueue = useRef([])
   const logEndRef = useRef(null)
 
   // Auto-scroll chat log
@@ -45,8 +46,14 @@ export default function PlayerView() {
     wsRef.current = ws
 
     ws.onopen = () => {
-      // Status will update on first server message or stay 'connecting' briefly
-      appendLog({ type: 'system', text: 'Joining session…' })
+      setStatus('connected')
+      appendLog({ type: 'system', text: 'Connected to game session.' })
+      
+      // Flush queue
+      while (messageQueue.current.length > 0) {
+        const msg = messageQueue.current.shift()
+        ws.send(JSON.stringify(msg))
+      }
     }
 
     ws.onmessage = (event) => {
@@ -115,8 +122,12 @@ export default function PlayerView() {
   // Bridge custom events from Web Components (plugins) to the WebSocket
   useEffect(() => {
     const handleSendWs = (event) => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      if (!wsRef.current) return
+      
+      if (wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify(event.detail))
+      } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
+        messageQueue.current.push(event.detail)
       }
     }
     window.addEventListener('send-ws', handleSendWs)
