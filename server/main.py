@@ -114,6 +114,9 @@ def ensure_firewall_rule(port: int) -> None:
 kernel = Kernel(plugins_dir=PLUGINS_DIR)
 manager = ConnectionManager(host_token=HOST_TOKEN)
 
+# Inject the send method into the kernel so plugins can respond
+kernel.send_message = manager.send_plugin_message
+
 # ---------------------------------------------------------------------------
 # FastAPI application
 # ---------------------------------------------------------------------------
@@ -232,6 +235,16 @@ async def ws_host(websocket: WebSocket, token: str = "") -> None:
                         {"type": "dice_roll", "roller": "DM", "result": result, "secret": False}
                     )
 
+            elif event_type == "plugin_message":
+                plugin_name = data.get("plugin", "")
+                payload = data.get("payload", {})
+                kernel.fire(
+                    "on_plugin_message",
+                    sender="DM",
+                    plugin=plugin_name,
+                    payload=payload,
+                )
+
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
         await manager.broadcast_public({"type": "host_disconnected"})
@@ -277,6 +290,16 @@ async def ws_player(websocket: WebSocket, token: str = "") -> None:
                         "result": result,
                         "secret": False,
                     }
+                )
+
+            elif event_type == "plugin_message":
+                plugin_name = data.get("plugin", "")
+                payload = data.get("payload", {})
+                kernel.fire(
+                    "on_plugin_message",
+                    sender=player_name,
+                    plugin=plugin_name,
+                    payload=payload,
                 )
 
     except WebSocketDisconnect:

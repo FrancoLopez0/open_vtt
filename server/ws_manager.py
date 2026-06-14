@@ -152,3 +152,31 @@ class ConnectionManager:
                 await info.websocket.send_json(message)
             except Exception:
                 logger.exception("Failed to send message to player '%s'", info.name)
+
+    async def send_plugin_message(self, target: str, plugin_name: str, payload: dict) -> None:
+        """Send a custom plugin message to a specific target.
+
+        Args:
+            target: "ALL", "DM", or a specific player's name.
+            plugin_name: The name of the plugin sending the message.
+            payload: The JSON-serializable data payload.
+        """
+        message = {
+            "type": "plugin_message",
+            "plugin": plugin_name,
+            "payload": payload,
+        }
+        
+        if target == "ALL":
+            await self.broadcast_public(message)
+        elif target == "DM":
+            await self.send_to_host(message)
+        else:
+            # Find player by name
+            for info in self.players.values():
+                if info.name == target and info.websocket:
+                    try:
+                        await info.websocket.send_json(message)
+                    except Exception:
+                        logger.exception("Failed to send plugin message to player '%s'", target)
+                    break

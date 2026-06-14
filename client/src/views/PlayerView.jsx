@@ -81,6 +81,10 @@ export default function PlayerView() {
           case 'player_disconnected':
             appendLog({ type: 'system', text: `${data.name} left the session.` })
             break
+          case 'plugin_message':
+            // Route custom plugin messages to the DOM so Web Components can catch them
+            window.dispatchEvent(new CustomEvent('plugin-message', { detail: data }))
+            break
           default:
             break
         }
@@ -102,8 +106,21 @@ export default function PlayerView() {
       // onclose will fire after onerror and set the status
     }
 
-    return () => ws.close()
+    return () => {
+      ws.close()
+    }
   }, [playerToken, appendLog])
+
+  // Bridge custom events from Web Components (plugins) to the WebSocket
+  useEffect(() => {
+    const handleSendWs = (event) => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify(event.detail))
+      }
+    }
+    window.addEventListener('send-ws', handleSendWs)
+    return () => window.removeEventListener('send-ws', handleSendWs)
+  }, [])
 
   // Send chat message
   const sendChat = useCallback(() => {
