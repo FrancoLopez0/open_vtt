@@ -95,8 +95,10 @@ def ensure_firewall_rule(port: int) -> None:
 
     logger.info("Requesting Windows UAC elevation to configure firewall for LAN players...")
 
-    # The 'runas' verb triggers the UAC prompt
-    params = f'advfirewall firewall add rule name="{rule_name}" dir=in action=allow protocol=TCP localport={port} profile=any'
+    # The 'runas' verb triggers the UAC prompt.
+    # By specifying program=sys.executable, the rule only allows traffic when THIS Python is running.
+    exe_path = sys.executable
+    params = f'advfirewall firewall add rule name="{rule_name}" dir=in action=allow protocol=TCP localport={port} profile=any program="{exe_path}"'
     ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "netsh", params, None, 0)
 
     if ret > 32:
