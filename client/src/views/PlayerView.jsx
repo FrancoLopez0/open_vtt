@@ -53,11 +53,14 @@ export default function PlayerView() {
         const data = JSON.parse(event.data)
 
         switch (data.type) {
-          case 'player_connected':
-            // Server echoes the name back when we connect
+          case 'welcome':
+            // Server echoes our name back when we connect
             setStatus('connected')
             setPlayerName(data.name)
             appendLog({ type: 'system', text: `You joined as ${data.name}.` })
+            break
+          case 'player_connected':
+            appendLog({ type: 'system', text: `${data.name} joined the session.` })
             break
           case 'chat':
             appendLog({ type: 'chat', sender: data.sender, text: data.message })

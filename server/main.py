@@ -187,7 +187,10 @@ async def list_players(
     if x_host_token != HOST_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    return JSONResponse(manager.list_players())
+    players = manager.list_players()
+    for p in players:
+        p["join_url"] = f"http://{LAN_IP}:{PORT}/player?token={p['token']}"
+    return JSONResponse(players)
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +247,7 @@ async def ws_player(websocket: WebSocket, token: str = "") -> None:
     player_name = manager.players[token].name
 
     try:
+        await websocket.send_json({"type": "welcome", "name": player_name})
         await manager.broadcast_public({"type": "player_connected", "name": player_name})
         while True:
             data: dict[str, Any] = await websocket.receive_json()

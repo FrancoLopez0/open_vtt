@@ -208,7 +208,7 @@ export default function DMView() {
                       <button 
                         className="btn btn-ghost" 
                         style={{ padding: '2px 6px', fontSize: 10 }}
-                        onClick={() => navigator.clipboard.writeText(`http://${window.location.host}/player?token=${p.token}`)}
+                        onClick={() => navigator.clipboard.writeText(p.join_url)}
                         title="Copy Join Link"
                       >
                         Copy Link
