@@ -20,6 +20,7 @@ export default function PlayerView() {
   const [playerName, setPlayerName] = useState(null)
   const [log, setLog] = useState([])
   const [chatInput, setChatInput] = useState('')
+  const [isChatOpen, setIsChatOpen] = useState(false)
 
   const wsRef = useRef(null)
   const logEndRef = useRef(null)
@@ -164,56 +165,67 @@ export default function PlayerView() {
         <span className="topbar-title">
           🎲 Open VTT{playerName ? ` — ${playerName}` : ''}
         </span>
-        <span className={`badge ${statusClass}`}>{statusLabel}</span>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <button 
+            className="btn btn-secondary" 
+            style={{ padding: '4px 8px', fontSize: '12px' }}
+            onClick={() => setIsChatOpen(!isChatOpen)}
+          >
+            {isChatOpen ? 'Hide Chat' : 'Show Chat'}
+          </button>
+          <span className={`badge ${statusClass}`}>{statusLabel}</span>
+        </div>
       </div>
 
       {/* Main layout */}
-      <div className="layout-sidebar" style={{ flex: 1, minHeight: 0 }}>
-        {/* Sidebar: plugin widgets */}
-        <aside className="sidebar">
+      <div className="relative flex flex-1 overflow-hidden">
+        {/* Main Content: Plugin widgets */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-8">
           <PluginSlot role="player" />
-        </aside>
+        </main>
 
-        {/* Chat area */}
-        <div className="layout-main">
-          <div className="chat-log">
-            {log.map((entry) => (
-              <div
-                key={entry.id}
-                className={`chat-message fade-in ${entry.type === 'roll' ? 'is-roll' : ''}`}
-              >
-                <span
-                  className={`chat-sender ${
-                    entry.sender === 'DM' ? 'is-dm' : entry.type === 'system' ? 'is-system' : ''
-                  }`}
+        {/* Chat area (Floating Overlay) */}
+        {isChatOpen && (
+          <div className="absolute top-0 right-0 h-full w-80 bg-black/90 backdrop-blur-md border-l border-[#b38135]/30 flex flex-col shadow-[0_0_20px_rgba(0,0,0,0.8)] z-50 transition-transform">
+            <div className="chat-log flex-1 overflow-y-auto p-4 flex flex-col gap-2" style={{ paddingBottom: '16px' }}>
+              {log.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={`chat-message fade-in ${entry.type === 'roll' ? 'is-roll' : ''}`}
                 >
-                  {entry.type === 'system' ? 'System' : entry.sender}
-                </span>
-                <span className="chat-text">{entry.text}</span>
-              </div>
-            ))}
-            <div ref={logEndRef} />
-          </div>
+                  <span
+                    className={`chat-sender ${
+                      entry.sender === 'DM' ? 'is-dm' : entry.type === 'system' ? 'is-system' : ''
+                    }`}
+                  >
+                    {entry.type === 'system' ? 'System' : entry.sender}
+                  </span>
+                  <span className="chat-text">{entry.text}</span>
+                </div>
+              ))}
+              <div ref={logEndRef} />
+            </div>
 
-          <div className="chat-input-row">
-            <input
-              type="text"
-              placeholder="Send a message…"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-              style={{ flex: 1 }}
-              disabled={status !== 'connected'}
-            />
-            <button
-              className="btn btn-primary"
-              onClick={sendChat}
-              disabled={!chatInput.trim() || status !== 'connected'}
-            >
-              Send
-            </button>
+            <div className="p-3 border-t border-[#b38135]/20 bg-[#080810] flex gap-2">
+              <input
+                type="text"
+                placeholder="Send a message…"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+                className="flex-1 bg-black/50 border border-white/10 text-white p-2 rounded focus:outline-none focus:border-[#b38135] text-sm"
+                disabled={status !== 'connected'}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={sendChat}
+                disabled={!chatInput.trim() || status !== 'connected'}
+              >
+                Send
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

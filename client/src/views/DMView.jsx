@@ -18,6 +18,7 @@ export default function DMView() {
   const [status, setStatus] = useState('disconnected') // 'connected' | 'disconnected' | 'error'
   const [log, setLog] = useState([])
   const [chatInput, setChatInput] = useState('')
+  const [isChatOpen, setIsChatOpen] = useState(false)
   const [players, setPlayers] = useState([])
   const [newPlayerName, setNewPlayerName] = useState('')
   const [creatingPlayer, setCreatingPlayer] = useState(false)
@@ -181,27 +182,37 @@ export default function DMView() {
       {/* Top bar */}
       <div className="topbar">
         <span className="topbar-title text-amber-400 font-bold tracking-wider">⚔ Open VTT — Dungeon Master</span>
-        <span className={`badge ${statusClass}`}>{statusLabel}</span>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <button 
+            className="btn btn-secondary" 
+            style={{ padding: '4px 8px', fontSize: '12px' }}
+            onClick={() => setIsChatOpen(!isChatOpen)}
+          >
+            {isChatOpen ? 'Hide Chat' : 'Show Chat'}
+          </button>
+          <span className={`badge ${statusClass}`}>{statusLabel}</span>
+        </div>
       </div>
 
       {/* Main layout */}
-      <div className="layout-sidebar" style={{ flex: 1, minHeight: 0}}>
-        {/* Sidebar */}
-        <aside className="sidebar">
-          {/* Player Manager */}
-          <div className="panel">
-            <div className="panel-header">
-              <h3>Players</h3>
-            </div>
-
-            {/* Create player form */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+      <div className="relative flex flex-1 overflow-hidden">
+        
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col gap-8">
+          
+          {/* Player Grid Section */}
+          <section>
+            <h2 className="text-xl font-cinzel text-[#e8c46a] uppercase tracking-widest border-b border-[#b38135]/30 pb-2 mb-4">Player Grid</h2>
+            
+            {/* Add Player */}
+            <div className="flex gap-2 mb-6 max-w-md">
               <input
                 type="text"
-                placeholder="Player name…"
+                placeholder="New Player name…"
                 value={newPlayerName}
                 onChange={(e) => setNewPlayerName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && createPlayer()}
+                className="flex-1 bg-black/50 border border-white/10 text-white p-2 rounded focus:outline-none focus:border-[#b38135] text-sm"
               />
               <button
                 className="btn btn-primary"
@@ -212,78 +223,91 @@ export default function DMView() {
               </button>
             </div>
 
-
-
-            {/* Player list */}
-            {players.length > 0 && (
-              <div className="player-list" style={{ marginTop: 'var(--space-md)' }}>
+            {/* Players Grid */}
+            {players.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {players.map((p) => (
-                  <div key={p.token} className="player-item fade-in" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span className="player-name">{p.name}</span>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <button 
-                        className="btn btn-ghost" 
-                        style={{ padding: '2px 6px', fontSize: 10 }}
-                        onClick={() => navigator.clipboard.writeText(p.join_url)}
-                        title="Copy Join Link"
-                      >
-                        Copy Link
-                      </button>
+                  <div key={p.token} className="bg-[#13131f] border border-[#b38135]/30 p-4 rounded-xl flex flex-col gap-2 shadow-lg relative">
+                    <div className="flex justify-between items-start">
+                      <span className="font-bold text-lg text-white">{p.name}</span>
                       <span className={`badge ${p.connected ? 'badge-connected' : 'badge-disconnected'}`}>
                         {p.connected ? 'Online' : 'Offline'}
                       </span>
                     </div>
+                    
+                    {/* Placeholder for future HP bars or plugin state */}
+                    <div className="text-xs text-white/50 italic mb-2">
+                      (Character sheet data will appear in the Table section below)
+                    </div>
+
+                    <div className="mt-auto pt-3 flex justify-between items-center border-t border-white/5">
+                      <button 
+                        className="btn btn-ghost text-xs py-1 px-2"
+                        onClick={() => navigator.clipboard.writeText(p.join_url)}
+                      >
+                        Copy Join Link
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
+            ) : (
+              <div className="text-white/40 italic text-sm">No players added yet.</div>
             )}
-          </div>
+          </section>
 
-          {/* Plugin widgets (DM role) */}
-          <PluginSlot role="dm" />
-        </aside>
+          {/* Plugin Widgets Area */}
+          <section>
+            <h2 className="text-xl font-cinzel text-[#e8c46a] uppercase tracking-widest border-b border-[#b38135]/30 pb-2 mb-4">Table</h2>
+            <PluginSlot role="dm" />
+          </section>
 
-        {/* Chat area */}
-        <div className="layout-main">
-          <div className="chat-log">
-            {log.map((entry) => (
-              <div
-                key={entry.id}
-                className={`chat-message fade-in ${
-                  entry.type === 'roll' ? 'is-roll' : entry.type === 'secret' ? 'is-secret' : ''
-                }`}
-              >
-                <span
-                  className={`chat-sender ${
-                    entry.sender === 'DM' ? 'is-dm' : entry.type === 'system' ? 'is-system' : ''
+        </main>
+
+        {/* Chat area (Floating Overlay) */}
+        {isChatOpen && (
+          <div className="absolute top-0 right-0 h-full w-80 bg-black/90 backdrop-blur-md border-l border-[#b38135]/30 flex flex-col shadow-[0_0_20px_rgba(0,0,0,0.8)] z-50 transition-transform">
+            <div className="chat-log flex-1 overflow-y-auto p-4 flex flex-col gap-2" style={{ paddingBottom: '16px' }}>
+              {log.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={`chat-message fade-in ${
+                    entry.type === 'roll' ? 'is-roll' : entry.type === 'secret' ? 'is-secret' : ''
                   }`}
                 >
-                  {entry.type === 'system' ? 'System' : entry.sender}
-                </span>
-                <span className="chat-text">{entry.text}</span>
-              </div>
-            ))}
-            <div ref={logEndRef} />
-          </div>
+                  <span
+                    className={`chat-sender ${
+                      entry.sender === 'DM' ? 'is-dm' : entry.type === 'system' ? 'is-system' : ''
+                    }`}
+                  >
+                    {entry.type === 'system' ? 'System' : entry.sender}
+                  </span>
+                  <span className="chat-text">{entry.text}</span>
+                </div>
+              ))}
+              <div ref={logEndRef} />
+            </div>
 
-          <div className="chat-input-row">
-            <input
-              type="text"
-              placeholder="Send a message…"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-              style={{ flex: 1 }}
-            />
-            <button
-              className="btn btn-primary"
-              onClick={sendChat}
-              disabled={!chatInput.trim() || status !== 'connected'}
-            >
-              Send
-            </button>
+            <div className="p-3 border-t border-[#b38135]/20 bg-[#080810] flex gap-2">
+              <input
+                type="text"
+                placeholder="Send a message…"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+                className="flex-1 bg-black/50 border border-white/10 text-white p-2 rounded focus:outline-none focus:border-[#b38135] text-sm"
+                disabled={status !== 'connected'}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={sendChat}
+                disabled={!chatInput.trim() || status !== 'connected'}
+              >
+                Send
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
