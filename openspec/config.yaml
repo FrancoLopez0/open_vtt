@@ -1,0 +1,21 @@
+project: open_vtt
+description: Local-network D&D VTT — Microkernel architecture, asymmetric DM/Player UI.
+stack:
+  backend: Python 3.11+, FastAPI, Uvicorn, pluggy, pywebview
+  frontend: Vite + React 18, react-router-dom, Vanilla CSS
+  packaging: PyInstaller (future)
+  runtime: LAN-only, no cloud
+
+strict_tdd: false
+testing:
+  runner: none
+  note: No test runner configured in initial scaffold. Add pytest (backend) and vitest (frontend) before sdd-apply produces test tasks.
+
+persistence: openspec
+
+rules:
+  proposal: Keep under 450 words. Bullet points and tables over prose.
+  specs: Use RFC 2119 keywords. Every requirement needs at least one Given/When/Then scenario.
+  design: Under 800 words. Decisions as tables. Code snippets only for non-obvious patterns.
+  tasks: Under 530 words. Checklist format. Each task completable in one session.
+  apply: Work unit commits. One logical unit per commit.
