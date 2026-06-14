@@ -164,12 +164,12 @@ export default function DMView() {
     <div className="layout-full">
       {/* Top bar */}
       <div className="topbar">
-        <span className="topbar-title">⚔ Open VTT — Dungeon Master</span>
+        <span className="topbar-title text-amber-400 font-bold tracking-wider">⚔ Open VTT — Dungeon Master</span>
         <span className={`badge ${statusClass}`}>{statusLabel}</span>
       </div>
 
       {/* Main layout */}
-      <div className="layout-sidebar" style={{ flex: 1, minHeight: 0 }}>
+      <div className="layout-sidebar" style={{ flex: 1, minHeight: 0}}>
         {/* Sidebar */}
         <aside className="sidebar">
           {/* Player Manager */}
