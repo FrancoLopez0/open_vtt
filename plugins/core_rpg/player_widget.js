@@ -16,6 +16,7 @@ class CoreRPGPlayer extends HTMLElement {
       stats: [],
       inventory: ""
     }
+    this._saveTimeout = null
   }
 
   connectedCallback() {
@@ -214,6 +215,14 @@ class CoreRPGPlayer extends HTMLElement {
 
     this.shadowRoot.getElementById('save-btn').addEventListener('click', () => this._save())
     this.shadowRoot.getElementById('add-stat-btn').addEventListener('click', () => this._addStat())
+
+    // Auto-save when user types, with a 500ms debounce
+    this.shadowRoot.addEventListener('input', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        clearTimeout(this._saveTimeout)
+        this._saveTimeout = setTimeout(() => this._save(), 500)
+      }
+    })
   }
 
   _updateDOM() {
