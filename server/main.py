@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import secrets
 import socket
+import sys
 import threading
 import uuid
 from pathlib import Path
@@ -66,6 +67,43 @@ def get_lan_ip() -> str:
 
 LAN_IP: str = get_lan_ip()
 PORT: int = 8000
+
+# ---------------------------------------------------------------------------
+# Firewall automation (Windows)
+# ---------------------------------------------------------------------------
+
+def ensure_firewall_rule(port: int) -> None:
+    """Check and automatically add a Windows Firewall rule via UAC prompt."""
+    if sys.platform != "win32":
+        return
+
+    import ctypes
+    import subprocess
+
+    rule_name = f"Open VTT (Port {port})"
+
+    try:
+        # Checking rule doesn't require admin privileges
+        subprocess.check_output(
+            f'netsh advfirewall firewall show rule name="{rule_name}"',
+            shell=True,
+            stderr=subprocess.STDOUT,
+        )
+        return  # Rule already exists, do nothing
+    except subprocess.CalledProcessError:
+        pass  # Rule not found, we must add it
+
+    logger.info("Requesting Windows UAC elevation to configure firewall for LAN players...")
+
+    # The 'runas' verb triggers the UAC prompt
+    params = f'advfirewall firewall add rule name="{rule_name}" dir=in action=allow protocol=TCP localport={port} profile=any'
+    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "netsh", params, None, 0)
+
+    if ret > 32:
+        logger.info("Firewall rule configured successfully.")
+    else:
+        logger.warning("UAC prompt was rejected. Players on the LAN might not be able to connect.")
+
 
 # ---------------------------------------------------------------------------
 # Core services
@@ -271,6 +309,7 @@ def run_server() -> None:
 
 
 def main() -> None:
+    ensure_firewall_rule(PORT)
     kernel.fire("on_session_start", session={"lan_ip": LAN_IP, "port": PORT})
 
     server_thread = threading.Thread(target=run_server, daemon=True)
