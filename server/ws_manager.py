@@ -71,6 +71,8 @@ class ConnectionManager:
         Returns True on success, False if the token is invalid.
         """
         if token != self.host_token:
+            await websocket.accept()
+            await websocket.send_json({"type": "error", "code": 4001, "message": "Unauthorized"})
             await websocket.close(code=4001, reason="Unauthorized")
             logger.warning("Host connection rejected — invalid token")
             return False
@@ -86,6 +88,8 @@ class ConnectionManager:
         Returns True on success, False if the token is unknown.
         """
         if token not in self.players:
+            await websocket.accept()
+            await websocket.send_json({"type": "error", "code": 4001, "message": "Token not found"})
             await websocket.close(code=4001, reason="Token not found")
             logger.warning("Player connection rejected — unknown token %s…", token[:8])
             return False

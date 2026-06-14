@@ -1,0 +1,5 @@
+{
+  "name": "example_plugin",
+  "version": "0.1.0",
+  "description": "Demo dice roller — shows how to build a dual-widget Open VTT plugin"
+}

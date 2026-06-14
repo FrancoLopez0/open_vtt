@@ -49,19 +49,19 @@ Chain strategy: feature-branch-chain
 
 ## Phase 3: Example Plugin
 
-- [ ] 3.1 Create `plugins/example_plugin/plugin.json` — `{"name": "example_plugin", "version": "0.1.0", "description": "Demo dice roller"}`
-- [ ] 3.2 Create `plugins/example_plugin/__init__.py` — `ExamplePlugin` class with `@hookimpl def on_dice_roll(self, roller, result, secret)` that logs the roll
-- [ ] 3.3 Create `plugins/example_plugin/dm_widget.js` — `ExamplePluginDM extends HTMLElement` with shadow DOM: d4/d6/d8/d10/d12/d20 buttons, secret roll toggle checkbox, result display; registers as `example-plugin-dm`
-- [ ] 3.4 Create `plugins/example_plugin/player_widget.js` — `ExamplePluginPlayer extends HTMLElement` with shadow DOM: same dice buttons without secret toggle; registers as `example-plugin-player`
+- [x] 3.1 Create `plugins/example_plugin/plugin.json` — `{"name": "example_plugin", "version": "0.1.0", "description": "Demo dice roller"}`
+- [x] 3.2 Create `plugins/example_plugin/__init__.py` — `ExamplePlugin` class with `@hookimpl def on_dice_roll(self, roller, result, secret)` that logs the roll
+- [x] 3.3 Create `plugins/example_plugin/dm_widget.js` — `ExamplePluginDM extends HTMLElement` with shadow DOM: d4/d6/d8/d10/d12/d20 buttons, secret roll toggle checkbox, result display; registers as `example-plugin-dm`
+- [x] 3.4 Create `plugins/example_plugin/player_widget.js` — `ExamplePluginPlayer extends HTMLElement` with shadow DOM: same dice buttons without secret toggle; registers as `example-plugin-player`
 
 ## Phase 4: Wiring & Integration
 
-- [ ] 4.1 Create `.gitignore` — `__pycache__/`, `*.pyc`, `dist/`, `node_modules/`, `.atl/`, `*.egg-info/`
-- [ ] 4.2 Verify `kernel.py` resolves `plugins/` path relative to `main.py` location using `pathlib.Path(__file__).parent.parent / "plugins"` — not CWD
-- [ ] 4.3 Verify `main.py` resolves `client/dist/` path using `pathlib.Path(__file__).parent.parent / "client" / "dist"` — not CWD
-- [ ] 4.4 Verify WS endpoints send `{"type": "error", "code": 4001}` before closing — frontend relies on close code for error display
-- [ ] 4.5 Verify `PluginSlot` de-duplicates script injection — re-mounting the component must not load the same script twice
+- [x] 4.1 Create `.gitignore` — `__pycache__/`, `*.pyc`, `dist/`, `node_modules/`, `.atl/`, `*.egg-info/`
+- [x] 4.2 Verify `kernel.py` resolves `plugins/` path relative to `main.py` location using `pathlib.Path(__file__).parent.parent / "plugins"` — not CWD
+- [x] 4.3 Verify `main.py` resolves `client/dist/` path using `pathlib.Path(__file__).parent.parent / "client" / "dist"` — not CWD
+- [x] 4.4 Verify WS endpoints send `{"type": "error", "code": 4001}` before closing — frontend relies on close code for error display
+- [x] 4.5 Verify `PluginSlot` de-duplicates script injection — re-mounting the component must not load the same script twice
 
 ## Phase 5: Documentation
 
-- [ ] 5.1 Create `README.md` with sections: Project overview, Prerequisites (Python 3.11+, Node 18+), Dev setup, Dev run, Production run, Plugin authoring guide (file structure + hookspecs + Web Component naming convention)
+- [x] 5.1 Create `README.md` with sections: Project overview, Prerequisites (Python 3.11+, Node 18+), Dev setup, Dev run, Production run, Plugin authoring guide (file structure + hookspecs + Web Component naming convention)
