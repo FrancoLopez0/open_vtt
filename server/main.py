@@ -297,7 +297,7 @@ async def ws_player(websocket: WebSocket, token: str = "") -> None:
                 payload = data.get("payload", {})
                 kernel.fire(
                     "on_plugin_message",
-                    sender=player_name,
+                    sender=token,
                     plugin=plugin_name,
                     payload=payload,
                 )
