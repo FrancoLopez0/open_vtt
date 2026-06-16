@@ -2,17 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import PluginSlot from '../components/PluginSlot.tsx'
 
-export interface CharacterSheet {
-  name: string
-  race: string
-  class_name: string
-  level: number
-  hp_current: number
-  hp_max: number
-  stats: Array<{ name: string; value: string }>
-  inventory: string
-}
-
 export interface Player {
   name: string
   token: string
@@ -30,40 +19,30 @@ export interface ChatEntry {
 const WS_URL = (token: string) =>
   `ws://${window.location.host}/ws/host?token=${encodeURIComponent(token)}`
 
-/**
- * DMView — the Dungeon Master's dashboard.
- *
- * Loaded exclusively inside the pywebview window at /dm?token=<host_token>.
- * Connects to the host WebSocket, manages players, and renders the DM plugin slot.
- */
 export default function DMView() {
   const [searchParams] = useSearchParams()
-  const hostToken = searchParams.get('token') ?? ''
+  const hostToken = searchParams.get('token') ?? (import.meta.env.DEV ? 'dev_host' : '')
 
-  const [status, setStatus] = useState('disconnected') // 'connected' | 'disconnected' | 'error'
+  const [status, setStatus] = useState('disconnected')
   const [log, setLog] = useState<ChatEntry[]>([])
   const [chatInput, setChatInput] = useState('')
-  const [isChatOpen, setIsChatOpen] = useState(false)
   const [players, setPlayers] = useState<Player[]>([])
   const [newPlayerName, setNewPlayerName] = useState('')
   const [creatingPlayer, setCreatingPlayer] = useState(false)
   const [activeTab, setActiveTab] = useState<'dashboard' | 'combat'>('dashboard')
 
-  const wsRef = useRef(null)
-  const messageQueue = useRef([])
-  const logEndRef = useRef(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const messageQueue = useRef<any[]>([])
+  const logEndRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll chat log
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [log])
 
-  // Append a message to the chat log
   const appendLog = useCallback((entry: Omit<ChatEntry, 'id'>) => {
     setLog((prev) => [...prev, { id: Date.now() + Math.random(), ...entry }])
   }, [])
 
-  // Fetch player list from REST API
   const fetchPlayers = useCallback(async () => {
     try {
       const res = await fetch('/api/players', {
@@ -72,17 +51,14 @@ export default function DMView() {
       if (res.ok) {
         const playersData = await res.json()
         setPlayers(playersData)
-        // Store globally for plugins that load asynchronously after the event fires
         window.__VTT_PLAYERS__ = playersData
-        // Notify plugins that the player list has updated
         window.dispatchEvent(new CustomEvent('vtt-players-update', { detail: playersData }))
       }
     } catch {
-      // silently retry on next event
+      // silently retry
     }
   }, [hostToken])
 
-  // WebSocket lifecycle
   useEffect(() => {
     if (!hostToken) {
       setStatus('error')
@@ -97,7 +73,6 @@ export default function DMView() {
       appendLog({ type: 'system', text: 'Connected to game session.' })
       fetchPlayers()
       
-      // Flush queue
       while (messageQueue.current.length > 0) {
         const msg = messageQueue.current.shift()
         ws.send(JSON.stringify(msg))
@@ -107,8 +82,6 @@ export default function DMView() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        console.log("[DMView WS] Received message:", data)
-
         switch (data.type) {
           case 'chat':
             appendLog({ type: 'chat', sender: data.sender, text: data.message })
@@ -117,9 +90,7 @@ export default function DMView() {
             appendLog({
               type: data.secret ? 'secret' : 'roll',
               sender: data.roller,
-              text: data.secret
-                ? `[SECRET] rolled ${data.result}`
-                : `rolled ${data.result}`,
+              text: data.secret ? `[SECRET] rolled ${data.result}` : `rolled ${data.result}`,
             })
             break
           case 'player_connected':
@@ -131,25 +102,18 @@ export default function DMView() {
             fetchPlayers()
             break
           case 'plugin_message':
-            // Route custom plugin messages to the DOM so Web Components can catch them
             window.dispatchEvent(new CustomEvent('plugin-message', { detail: data }))
             break
-          default:
-            break
         }
-      } catch {
-        // ignore malformed messages
-      }
+      } catch {}
     }
 
     ws.onclose = () => {
       setStatus('disconnected')
-      appendLog({ type: 'system', text: 'Disconnected from game session. Reconnecting in 3s...' })
-      // Auto-reconnect logic
+      appendLog({ type: 'system', text: 'Disconnected. Reconnecting in 3s...' })
       setTimeout(() => {
         if (wsRef.current) {
           wsRef.current = null;
-          // Trigger a re-render to run the useEffect again
           setStatus('connecting')
         }
       }, 3000)
@@ -163,11 +127,10 @@ export default function DMView() {
       ws.close()
       wsRef.current = null
     }
-  }, [hostToken, appendLog, fetchPlayers, status])
+  }, [hostToken, appendLog, fetchPlayers])
 
-  // Bridge custom events from Web Components (plugins) to the WebSocket
   useEffect(() => {
-    const handleSendWs = (event) => {
+    const handleSendWs = (event: any) => {
       if (!wsRef.current) return
       
       if (wsRef.current.readyState === WebSocket.OPEN) {
@@ -176,18 +139,16 @@ export default function DMView() {
         messageQueue.current.push(event.detail)
       }
     }
-    window.addEventListener('send-ws', handleSendWs)
-    return () => window.removeEventListener('send-ws', handleSendWs)
+    window.addEventListener('send-ws', handleSendWs as EventListener)
+    return () => window.removeEventListener('send-ws', handleSendWs as EventListener)
   }, [])
 
-  // Send chat message
   const sendChat = useCallback(() => {
     if (!chatInput.trim() || wsRef.current?.readyState !== WebSocket.OPEN) return
     wsRef.current.send(JSON.stringify({ type: 'chat', message: chatInput.trim() }))
     setChatInput('')
   }, [chatInput])
 
-  // Create a new player
   const createPlayer = useCallback(async () => {
     if (!newPlayerName.trim()) return
     setCreatingPlayer(true)
@@ -209,129 +170,66 @@ export default function DMView() {
     }
   }, [newPlayerName, hostToken, fetchPlayers])
 
-
-
-  // --- Error: no token ---
   if (!hostToken) {
     return (
-      <div className="error-screen">
-        <h1>No Host Token</h1>
-        <p>
-          The DM window must be opened by the application. Restart Open VTT to get a
-          valid session token.
-        </p>
+      <div className="flex items-center justify-center h-screen">
+        <div className="glass-panel p-8 text-center max-w-md">
+          <h1 className="text-2xl font-display text-[var(--color-error)] mb-4">No Host Token</h1>
+          <p>The DM window must be opened by the application.</p>
+        </div>
       </div>
     )
   }
 
-  const statusClass =
-    status === 'connected'
-      ? 'badge-connected'
-      : status === 'error'
-      ? 'badge-disconnected'
-      : 'badge-waiting'
-
-  const statusLabel =
-    status === 'connected' ? 'Connected' : status === 'error' ? 'Error' : 'Connecting…'
+  const statusClass = status === 'connected' ? 'badge-connected' : status === 'error' ? 'badge-disconnected' : 'badge-waiting'
+  const statusLabel = status === 'connected' ? 'Online' : status === 'error' ? 'Error' : 'Connecting…'
 
   return (
-    <div className="layout-full">
-      {/* Top bar */}
-      <div className="topbar">
-        <span className="topbar-title text-amber-400 font-bold tracking-wider">⚔ Open VTT — Dungeon Master</span>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button
-            className={`btn ${activeTab === 'dashboard' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            Dashboard
-          </button>
-          <button
-            className={`btn ${activeTab === 'combat' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setActiveTab('combat')}
-          >
-            Combat
-          </button>
-          <div className="w-[1px] h-6 bg-white/20 mx-2"></div>
-          <button 
-            className="btn btn-secondary" 
-            style={{ padding: '4px 8px', fontSize: '12px' }}
-            onClick={() => setIsChatOpen(!isChatOpen)}
-          >
-            {isChatOpen ? 'Hide Chat' : 'Show Chat'}
-          </button>
-          <span className={`badge ${statusClass}`}>{statusLabel}</span>
-        </div>
-      </div>
-
-      {/* Main layout */}
-      <div className="relative flex flex-1 overflow-hidden">
+    <div className="layout-full items-center justify-center p-6 lg:p-12 bg-transparent">
+      
+      <div className="glass-panel flex flex-col w-full h-full rounded-2xl overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.9)] border border-[var(--color-gold-dim)] bg-black/70 backdrop-blur-md">
         
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col gap-8">
+        <header className="flex items-center justify-between px-6 py-4 bg-gradient-to-b from-black/80 to-black/40 border-b border-[var(--glass-border)]">
+          <div className="flex items-center gap-3">
+            <span className="text-[var(--color-gold)] text-xl">🐉</span>
+            <span className="font-display text-lg tracking-wider text-[var(--color-gold-bright)]">OPEN VTT</span>
+          </div>
           
-          {activeTab === 'dashboard' ? (
-            <>
-              {/* Add Player */}
-              <div className="flex gap-2 max-w-md mb-8">
-                <input
-                  type="text"
-                  placeholder="New Player name…"
-                  value={newPlayerName}
-                  onChange={(e) => setNewPlayerName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && createPlayer()}
-                  className="flex-1 bg-black/50 border border-white/10 text-white p-2 rounded focus:outline-none focus:border-[#b38135] text-sm"
-                />
-                <button
-                  className="btn btn-primary"
-                  onClick={createPlayer}
-                  disabled={creatingPlayer || !newPlayerName.trim()}
-                >
-                  Add Player
-                </button>
-              </div>
+          <div className="flex gap-2">
+            <button className={`btn ${activeTab === 'dashboard' ? 'text-[var(--color-gold-bright)] border-b-2 border-[var(--color-gold)] rounded-none' : 'btn-ghost'}`} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
+            <button className="btn btn-ghost text-gray-500 cursor-not-allowed">Campaigns</button>
+            <button className="btn btn-ghost text-gray-500 cursor-not-allowed">Maps</button>
+            <button className={`btn ${activeTab === 'combat' ? 'text-[var(--color-gold-bright)] border-b-2 border-[var(--color-gold)] rounded-none' : 'btn-ghost'}`} onClick={() => setActiveTab('combat')}>Combat</button>
+            <button className="btn btn-ghost text-gray-500 cursor-not-allowed">Rules</button>
+            <button className="btn btn-ghost text-gray-500 cursor-not-allowed">Community</button>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <div className="relative bg-black/40 border border-[var(--color-gold-dim)] rounded px-3 py-1.5 flex items-center gap-2">
+              <span className="text-gray-500">🔍</span>
+              <input type="text" placeholder="Dark Iron" className="bg-transparent border-none outline-none text-sm w-32 text-gray-300" disabled />
+            </div>
+            <div className="text-right flex flex-col items-end">
+              <div className="font-display text-sm text-[var(--color-gold)]">DM Elara</div>
+              <div className={`badge ${statusClass} scale-90 origin-right mt-1`}>{statusLabel}</div>
+            </div>
+            <div className="w-10 h-10 rounded-full border border-[var(--color-gold-muted)] overflow-hidden bg-black">
+              <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=Elara&backgroundColor=transparent" alt="DM" />
+            </div>
+          </div>
+        </header>
 
-              {/* Plugin Table Area */}
-              <section>
-                <PluginSlot role="dm" />
-              </section>
-            </>
-          ) : (
-            <section className="flex flex-col items-center justify-center h-full text-center p-12 bg-[#13131f] border border-[#b38135]/30 rounded-xl shadow-lg">
-              <h2 className="text-3xl font-cinzel text-[#e8c46a] uppercase tracking-widest mb-4">Combat Engine</h2>
-              <p className="text-white/60 max-w-lg mb-8">
-                The initiative tracker and combat management system will be placed here.
-                Currently under construction.
-              </p>
-              <div className="w-16 h-16 opacity-30">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#e8c46a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14.5 17.5L3 6l1.5-1.5L16 16l-1.5 1.5z"></path>
-                  <path d="M17.5 14.5L6 3 4.5 4.5 16 16l1.5-1.5z"></path>
-                  <path d="M21 9l-4-4"></path>
-                  <path d="M22 3l-6 6"></path>
-                </svg>
-              </div>
-            </section>
-          )}
-
-        </main>
-
-        {/* Chat area (Floating Overlay) */}
-        {isChatOpen && (
-          <div className="absolute top-0 right-0 h-full w-80 bg-black/90 backdrop-blur-md border-l border-[#b38135]/30 flex flex-col shadow-[0_0_20px_rgba(0,0,0,0.8)] z-50 transition-transform">
-            <div className="chat-log flex-1 overflow-y-auto p-4 flex flex-col gap-2" style={{ paddingBottom: '16px' }}>
+        <div className="flex flex-col lg:flex-row flex-1 overflow-hidden p-6 lg:p-10 gap-8">
+          
+          <aside className="w-full lg:w-80 flex flex-col ornate-frame bg-black/60 overflow-hidden flex-shrink-0 shadow-2xl rounded-xl">
+            <div className="py-3 px-4 border-b border-[var(--glass-border)] text-center bg-black/40">
+              <h3 className="font-display text-sm text-[var(--color-gold-bright)] tracking-widest uppercase">Party Chat & Rolls</h3>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
               {log.map((entry) => (
-                <div
-                  key={entry.id}
-                  className={`chat-message fade-in ${
-                    entry.type === 'roll' ? 'is-roll' : entry.type === 'secret' ? 'is-secret' : ''
-                  }`}
-                >
-                  <span
-                    className={`chat-sender ${
-                      entry.sender === 'DM' ? 'is-dm' : entry.type === 'system' ? 'is-system' : ''
-                    }`}
-                  >
+                <div key={entry.id} className={`chat-message ${entry.type === 'roll' ? 'is-roll' : entry.type === 'secret' ? 'is-secret' : ''}`}>
+                  <span className={`chat-sender ${entry.sender === 'DM' ? 'is-dm' : entry.type === 'system' ? 'is-system' : ''}`}>
                     {entry.type === 'system' ? 'System' : entry.sender}
                   </span>
                   <span className="chat-text">{entry.text}</span>
@@ -339,27 +237,112 @@ export default function DMView() {
               ))}
               <div ref={logEndRef} />
             </div>
-
-            <div className="p-3 border-t border-[#b38135]/20 bg-[#080810] flex gap-2">
+            
+            <div className="p-3 border-t border-[var(--glass-border)] bg-black/60 flex gap-2">
               <input
                 type="text"
-                placeholder="Send a message…"
+                placeholder="Message..."
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-                className="flex-1 bg-black/50 border border-white/10 text-white p-2 rounded focus:outline-none focus:border-[#b38135] text-sm"
+                className="flex-1 bg-black/40 border border-[var(--color-gold-dim)] rounded text-sm px-3 py-2 text-[var(--color-text-primary)] focus:border-[var(--color-gold)] outline-none transition-colors"
                 disabled={status !== 'connected'}
               />
-              <button
-                className="btn btn-primary"
-                onClick={sendChat}
-                disabled={!chatInput.trim() || status !== 'connected'}
-              >
-                Send
+              <button className="btn btn-primary px-3" onClick={sendChat} disabled={!chatInput.trim() || status !== 'connected'}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
               </button>
             </div>
-          </div>
-        )}
+          </aside>
+
+          <main className="flex-1 flex flex-col min-w-0">
+            {activeTab === 'dashboard' ? (
+              <>
+                <div className="mb-4 flex items-end justify-between border-b border-[var(--glass-border)] pb-2 px-2">
+                  <h2 className="font-display text-xl lg:text-2xl text-[var(--color-text-primary)] tracking-wide">DM DASHBOARD <span className="text-[var(--color-text-muted)]">- The Shadowed Halls</span></h2>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-6 h-full min-h-0">
+                  
+                  <div className="flex-1 flex flex-col min-w-0 bg-black/20 rounded-lg border border-[var(--glass-border)] p-4 shadow-lg">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-display text-sm text-[var(--color-gold)] uppercase tracking-wider">Connected Players</h3>
+                    </div>
+
+                    <div className="flex gap-2 mb-4">
+                      <input
+                        type="text"
+                        placeholder="Invite new player..."
+                        value={newPlayerName}
+                        onChange={(e) => setNewPlayerName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && createPlayer()}
+                        className="flex-1 py-1.5 px-3 bg-black/50 border border-[var(--glass-border)] rounded text-sm outline-none focus:border-[var(--color-gold)] transition-colors"
+                      />
+                      <button className="btn btn-secondary text-xs px-4" onClick={createPlayer} disabled={creatingPlayer || !newPlayerName.trim()}>
+                        Add
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-3">
+                      {players.length === 0 ? (
+                        <div className="text-center p-8 text-[var(--color-text-muted)] italic text-sm">
+                          The tavern is empty. Invite players to begin.
+                        </div>
+                      ) : (
+                        players.map(p => (
+                          <div key={p.token} className="premium-card flex items-center p-3 group">
+                            <div className="relative w-12 h-12 rounded-full border border-[var(--color-gold-muted)] overflow-hidden bg-[#0a0a0a] flex-shrink-0 mr-4 shadow-[0_0_10px_rgba(207,170,102,0.2)]">
+                               <img src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${p.name}&backgroundColor=transparent`} alt={p.name} className="w-full h-full object-cover" />
+                               <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-black ${p.connected ? 'bg-[var(--color-success)]' : 'bg-[var(--color-error)]'}`}></div>
+                            </div>
+                            
+                            <div className="flex-1 min-w-0">
+                               <div className="flex justify-between items-center">
+                                  <span className="font-display text-lg text-[var(--color-text-primary)] truncate">{p.name}</span>
+                                  <span className={`text-[10px] font-bold uppercase tracking-wider ${p.connected ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]'}`}>
+                                    {p.connected ? 'Online' : 'Offline'}
+                                  </span>
+                               </div>
+                               <div className="mt-2">
+                                 <button
+                                   className="btn flex justify-center items-center gap-2 w-full text-xs py-1.5 px-3 bg-black/40 hover:bg-black/60 border border-[var(--color-gold-dim)] text-[var(--color-gold)] transition-colors rounded"
+                                   onClick={() => {
+                                     navigator.clipboard.writeText(p.join_url);
+                                     appendLog({ type: 'system', text: `Enlace de ${p.name} copiado al portapapeles.` });
+                                   }}
+                                   title="Copiar enlace de invitación"
+                                 >
+                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                   Copiar Link
+                                 </button>
+                               </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <main className="flex-1 flex flex-col min-w-0 bg-black/40 rounded-xl border border-[var(--glass-border)] p-8 shadow-2xl">
+                    <div className="flex justify-between items-center mb-6 border-b border-[var(--glass-border)] pb-2">
+                      <h3 className="font-display text-sm text-[var(--color-gold)] uppercase tracking-wider">Active Plugins & Tools</h3>
+                      <button className="btn btn-small hover:text-[var(--color-gold-bright)]">⚙️ Manage</button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                      <PluginSlot role="dm" />
+                    </div>
+                  </main>
+                  
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border border-dashed border-[var(--color-gold-dim)] rounded-lg bg-black/20">
+                <h2 className="font-display text-3xl mb-4 text-[var(--color-gold)]">Combat Engine</h2>
+                <p className="text-[var(--color-text-secondary)]">Initiative tracker and combat management system coming soon.</p>
+              </div>
+            )}
+          </main>
+
+        </div>
       </div>
     </div>
   )
