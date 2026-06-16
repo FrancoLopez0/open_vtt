@@ -38,3 +38,13 @@ class OpenVTTSpec:
             sender: Name of the sender.
             message: The message content.
         """
+
+    @hookspec
+    def on_plugin_message(self, sender: str, plugin: str, payload: dict) -> None:
+        """Fired when a plugin-specific WebSocket message is received.
+
+        Args:
+            sender: The player name (or "DM") who sent the message.
+            plugin: The target plugin name (e.g. "core_rpg").
+            payload: The arbitrary JSON dictionary payload from the frontend.
+        """

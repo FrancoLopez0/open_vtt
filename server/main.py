@@ -10,13 +10,20 @@ Usage:
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Add the project root to sys.path so 'python server/main.py' works correctly
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import logging
 import secrets
 import socket
-import sys
 import threading
 import uuid
-from pathlib import Path
+from contextlib import asynccontextmanager
 from typing import Any
 
 import uvicorn
@@ -111,8 +118,7 @@ def ensure_firewall_rule(port: int) -> None:
 # Core services
 # ---------------------------------------------------------------------------
 
-kernel = Kernel(plugins_dir=PLUGINS_DIR)
-manager = ConnectionManager(host_token=HOST_TOKEN)
+from server.state import manager, kernel
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -232,6 +238,16 @@ async def ws_host(websocket: WebSocket, token: str = "") -> None:
                         {"type": "dice_roll", "roller": "DM", "result": result, "secret": False}
                     )
 
+            elif event_type == "plugin_message":
+                plugin_name = data.get("plugin", "")
+                payload = data.get("payload", {})
+                kernel.fire(
+                    "on_plugin_message",
+                    sender="DM",
+                    plugin=plugin_name,
+                    payload=payload,
+                )
+
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
         await manager.broadcast_public({"type": "host_disconnected"})
@@ -277,6 +293,16 @@ async def ws_player(websocket: WebSocket, token: str = "") -> None:
                         "result": result,
                         "secret": False,
                     }
+                )
+
+            elif event_type == "plugin_message":
+                plugin_name = data.get("plugin", "")
+                payload = data.get("payload", {})
+                kernel.fire(
+                    "on_plugin_message",
+                    sender=token,
+                    plugin=plugin_name,
+                    payload=payload,
                 )
 
     except WebSocketDisconnect:

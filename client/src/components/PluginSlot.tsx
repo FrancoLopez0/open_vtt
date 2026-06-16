@@ -29,7 +29,7 @@ export default function PluginSlot({ role }) {
     const loaded = new Set()
 
     // Collect already-injected script srcs to avoid duplicates
-    document.querySelectorAll('script[data-plugin]').forEach((s) => loaded.add(s.src))
+    document.querySelectorAll('script[data-plugin]').forEach((s) => loaded.add((s as HTMLScriptElement).src))
 
     const elements = []
 
@@ -38,10 +38,11 @@ export default function PluginSlot({ role }) {
       if (!widgetUrl) continue
 
       // Inject script tag if not already present
+      // Use a cache-buster so plugins update immediately during development
       const fullUrl = new URL(widgetUrl, window.location.origin).href
       if (!loaded.has(fullUrl)) {
         const script = document.createElement('script')
-        script.src = fullUrl
+        script.src = fullUrl + '?t=' + Date.now()
         script.type = 'module'
         script.dataset.plugin = plugin.name
         document.head.appendChild(script)
