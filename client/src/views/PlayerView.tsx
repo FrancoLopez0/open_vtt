@@ -42,91 +42,96 @@ export default function PlayerView() {
       return
     }
 
-    const ws = new WebSocket(WS_URL(playerToken))
-    wsRef.current = ws
+    let ws = null;
+    let reconnectTimeout = null;
 
-    ws.onopen = () => {
-      setStatus('connected')
-      appendLog({ type: 'system', text: 'Connected to game session.' })
-      
-      // Flush queue
-      while (messageQueue.current.length > 0) {
-        const msg = messageQueue.current.shift()
-        ws.send(JSON.stringify(msg))
-      }
-    }
+    const connect = () => {
+      ws = new WebSocket(WS_URL(playerToken))
+      wsRef.current = ws
 
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-
-        switch (data.type) {
-          case 'welcome':
-            // Server echoes our name back when we connect
-            setStatus('connected')
-            setPlayerName(data.name)
-            appendLog({ type: 'system', text: `You joined as ${data.name}.` })
-            break
-          case 'player_connected':
-            appendLog({ type: 'system', text: `${data.name} joined the session.` })
-            break
-          case 'chat':
-            appendLog({ type: 'chat', sender: data.sender, text: data.message })
-            break
-          case 'dice_roll':
-            appendLog({
-              type: 'roll',
-              sender: data.roller,
-              text: `rolled ${data.result}`,
-            })
-            break
-          case 'host_connected':
-            appendLog({ type: 'system', text: 'The Dungeon Master has entered the session.' })
-            break
-          case 'host_disconnected':
-            appendLog({ type: 'system', text: 'The Dungeon Master disconnected.' })
-            break
-          case 'player_disconnected':
-            appendLog({ type: 'system', text: `${data.name} left the session.` })
-            break
-          case 'plugin_message':
-            // Route custom plugin messages to the DOM so Web Components can catch them
-            window.dispatchEvent(new CustomEvent('plugin-message', { detail: data }))
-            break
-          default:
-            break
+      ws.onopen = () => {
+        setStatus('connected')
+        appendLog({ type: 'system', text: 'Connected to game session.' })
+        
+        // Flush queue
+        while (messageQueue.current.length > 0) {
+          const msg = messageQueue.current.shift()
+          ws.send(JSON.stringify(msg))
         }
-      } catch {
-        // ignore malformed messages
       }
-    }
 
-    ws.onclose = (event) => {
-      if (event.code === 4001) {
-        setStatus('rejected')
-      } else {
-        setStatus('disconnected')
-        appendLog({ type: 'system', text: 'Disconnected from game session. Reconnecting in 3s...' })
-        // Auto-reconnect logic
-        setTimeout(() => {
-          if (wsRef.current) {
-            wsRef.current = null;
-            // Trigger a re-render to run the useEffect again
-            setStatus('connecting')
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+
+          switch (data.type) {
+            case 'welcome':
+              // Server echoes our name back when we connect
+              setStatus('connected')
+              setPlayerName(data.name)
+              appendLog({ type: 'system', text: `You joined as ${data.name}.` })
+              break
+            case 'player_connected':
+              appendLog({ type: 'system', text: `${data.name} joined the session.` })
+              break
+            case 'chat':
+              appendLog({ type: 'chat', sender: data.sender, text: data.message })
+              break
+            case 'dice_roll':
+              appendLog({
+                type: 'roll',
+                sender: data.roller,
+                text: `rolled ${data.result}`,
+              })
+              break
+            case 'host_connected':
+              appendLog({ type: 'system', text: 'The Dungeon Master has entered the session.' })
+              break
+            case 'host_disconnected':
+              appendLog({ type: 'system', text: 'The Dungeon Master disconnected.' })
+              break
+            case 'player_disconnected':
+              appendLog({ type: 'system', text: `${data.name} left the session.` })
+              break
+            case 'plugin_message':
+              // Route custom plugin messages to the DOM so Web Components can catch them
+              window.dispatchEvent(new CustomEvent('plugin-message', { detail: data }))
+              break
+            default:
+              break
           }
-        }, 3000)
+        } catch {
+          // ignore malformed messages
+        }
+      }
+
+      ws.onclose = (event) => {
+        if (event.code === 4001) {
+          setStatus('rejected')
+        } else {
+          setStatus('disconnected')
+          appendLog({ type: 'system', text: 'Disconnected from game session. Reconnecting in 3s...' })
+          // Auto-reconnect logic
+          reconnectTimeout = setTimeout(() => {
+            setStatus('connecting')
+            connect()
+          }, 3000)
+        }
+      }
+
+      ws.onerror = () => {
+        setStatus('error')
       }
     }
 
-    ws.onerror = () => {
-      setStatus('error')
-    }
+    connect()
 
     return () => {
-      ws.close()
+      clearTimeout(reconnectTimeout)
+      if (ws) ws.close()
       wsRef.current = null
     }
-  }, [playerToken, appendLog, status])
+  }, [playerToken, appendLog])
 
   // Bridge custom events from Web Components (plugins) to the WebSocket
   useEffect(() => {
@@ -200,13 +205,13 @@ export default function PlayerView() {
       {/* Main layout */}
       <div className="relative flex flex-1 overflow-hidden">
         {/* Main Content: Plugin widgets */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+        <main className="flex-1 overflow-y-auto p-8">
           <PluginSlot role="player" />
         </main>
 
         {/* Chat area (Floating Overlay) */}
         {isChatOpen && (
-          <div className="absolute top-0 right-0 h-full w-80 bg-black/90 backdrop-blur-md border-l border-[#b38135]/30 flex flex-col shadow-[0_0_20px_rgba(0,0,0,0.8)] z-50 transition-transform">
+          <div className="chat-overlay">
             <div className="chat-log flex-1 overflow-y-auto p-4 flex flex-col gap-2" style={{ paddingBottom: '16px' }}>
               {log.map((entry) => (
                 <div
@@ -226,14 +231,14 @@ export default function PlayerView() {
               <div ref={logEndRef} />
             </div>
 
-            <div className="p-3 border-t border-[#b38135]/20 bg-[#080810] flex gap-2">
+            <div className="p-3 flex gap-2" style={{ borderTop: '1px solid rgba(179, 129, 53, 0.2)', backgroundColor: '#080810' }}>
               <input
                 type="text"
                 placeholder="Send a message…"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-                className="flex-1 bg-black/50 border border-white/10 text-white p-2 rounded focus:outline-none focus:border-[#b38135] text-sm"
+                className="flex-1"
                 disabled={status !== 'connected'}
               />
               <button

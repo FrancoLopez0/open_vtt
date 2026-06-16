@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 class CoreRPGPlugin:
     def __init__(self):
         self.sheets: dict[str, dict[str, Any]] = {}
-        self.data_file = Path(__file__).parent / "sheets.json"
+        self.data_dir = Path(__file__).parent.parent.parent / ".data"
+        self.data_dir.mkdir(exist_ok=True)
+        self.data_file = self.data_dir / "sheets.json"
         self._load_sheets()
 
     def _load_sheets(self):

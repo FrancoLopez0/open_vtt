@@ -120,6 +120,8 @@ def ensure_firewall_rule(port: int) -> None:
 
 from server.state import manager, kernel
 
+manager.host_token = HOST_TOKEN
+
 # ---------------------------------------------------------------------------
 # FastAPI application
 # ---------------------------------------------------------------------------
