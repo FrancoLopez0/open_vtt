@@ -20,7 +20,7 @@ interface CombatEngineProps {
 
 export function CombatEngine({ players }: CombatEngineProps) {
   const [combatants, setCombatants] = useState<Combatant[]>([]);
-  const [currentTurn, setCurrentTurn] = useState<number>(0);
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [round, setRound] = useState<number>(1);
   const [isActive, setIsActive] = useState<boolean>(false);
 
@@ -78,24 +78,31 @@ export function CombatEngine({ players }: CombatEngineProps) {
 
   const nextTurn = () => {
     if (combatants.length === 0) return;
-    if (currentTurn + 1 >= combatants.length) {
-      setCurrentTurn(0);
-      setRound(round + 1);
+    const sorted = [...combatants].sort((a, b) => b.initiative - a.initiative);
+    const currentIndex = sorted.findIndex(c => c.id === activeTurnId);
+
+    if (currentIndex === -1) {
+      setActiveTurnId(sorted[0].id);
+    } else if (currentIndex + 1 >= sorted.length) {
+      setActiveTurnId(sorted[0].id);
+      setRound(r => r + 1);
     } else {
-      setCurrentTurn(currentTurn + 1);
+      setActiveTurnId(sorted[currentIndex + 1].id);
     }
   };
 
   const startCombat = () => {
+    if (combatants.length === 0) return;
     setIsActive(true);
     setRound(1);
-    setCurrentTurn(0);
+    const sorted = [...combatants].sort((a, b) => b.initiative - a.initiative);
+    setActiveTurnId(sorted[0].id);
   };
 
   const endCombat = () => {
     setIsActive(false);
     setRound(1);
-    setCurrentTurn(0);
+    setActiveTurnId(null);
   };
 
   return (
@@ -175,8 +182,8 @@ export function CombatEngine({ players }: CombatEngineProps) {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {sortedCombatants.map((c, index) => {
-                const isTurn = isActive && sortedCombatants[currentTurn]?.id === c.id;
+              {sortedCombatants.map((c) => {
+                const isTurn = isActive && activeTurnId === c.id;
                 return (
                   <div 
                     key={c.id} 
