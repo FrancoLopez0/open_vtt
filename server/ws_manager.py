@@ -38,6 +38,14 @@ class ConnectionManager:
         # Maps player_token -> PlayerInfo
         self.players: dict[str, PlayerInfo] = {}
 
+        # Load persisted players
+        from server.store import load_players
+        loaded_players = load_players()
+        for token, p_data in loaded_players.items():
+            self.players[token] = PlayerInfo(name=p_data["name"], connected=False)
+        if loaded_players:
+            logger.info("Loaded %d players from disk", len(loaded_players))
+
     # ------------------------------------------------------------------
     # Registration
     # ------------------------------------------------------------------
@@ -48,6 +56,11 @@ class ConnectionManager:
         Called by the DM via POST /api/players before the player connects.
         """
         self.players[token] = PlayerInfo(name=name)
+        
+        # Save to disk
+        from server.store import save_players
+        save_players({t: {"name": p.name} for t, p in self.players.items()})
+        
         logger.info("Registered player '%s' with token %s…", name, token[:8])
 
     def list_players(self) -> list[dict[str, Any]]:

@@ -16,18 +16,29 @@ interface Combatant {
 
 interface CombatEngineProps {
   players: PlayerProp[];
+  initialState?: any;
 }
 
-export function CombatEngine({ players }: CombatEngineProps) {
-  const [combatants, setCombatants] = useState<Combatant[]>([]);
-  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
-  const [round, setRound] = useState<number>(1);
-  const [isActive, setIsActive] = useState<boolean>(false);
+export function CombatEngine({ players, initialState }: CombatEngineProps) {
+  const [combatants, setCombatants] = useState<Combatant[]>(initialState?.combatants || []);
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(initialState?.activeTurnId || null);
+  const [round, setRound] = useState<number>(initialState?.round || 1);
+  const [isActive, setIsActive] = useState<boolean>(initialState?.isActive || false);
 
   // Form state
   const [npcName, setNpcName] = useState('');
   const [npcInit, setNpcInit] = useState('');
   const [npcHp, setNpcHp] = useState('');
+
+  // Sync to server on state change
+  React.useEffect(() => {
+    window.dispatchEvent(new CustomEvent('send-ws', { 
+      detail: { 
+        type: 'combat_update', 
+        state: { combatants, activeTurnId, round, isActive } 
+      } 
+    }));
+  }, [combatants, activeTurnId, round, isActive]);
 
   const sortedCombatants = [...combatants].sort((a, b) => b.initiative - a.initiative);
 

@@ -31,6 +31,7 @@ export default function DMView() {
   const [newPlayerName, setNewPlayerName] = useState('')
   const [creatingPlayer, setCreatingPlayer] = useState(false)
   const [activeTab, setActiveTab] = useState<'dashboard' | 'combat'>('dashboard')
+  const [initialCombatState, setInitialCombatState] = useState<any>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const messageQueue = useRef<any[]>([])
@@ -108,6 +109,11 @@ export default function DMView() {
               break
             case 'plugin_message':
               window.dispatchEvent(new CustomEvent('plugin-message', { detail: data }))
+              break
+            case 'combat_init':
+              if (data.state && Object.keys(data.state).length > 0) {
+                setInitialCombatState(data.state)
+              }
               break
           }
         } catch {}
@@ -343,7 +349,7 @@ export default function DMView() {
               </>
             ) : (
               <div className="flex-1 flex flex-col min-h-0">
-                <CombatEngine players={players} />
+                <CombatEngine players={players} initialState={initialCombatState} />
               </div>
             )}
           </main>
