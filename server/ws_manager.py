@@ -23,6 +23,7 @@ class PlayerInfo:
     name: str
     connected: bool = False
     websocket: WebSocket | None = field(default=None, repr=False)
+    character_sheet: dict = field(default_factory=dict)
 
 
 class ConnectionManager:
@@ -42,7 +43,11 @@ class ConnectionManager:
         from server.store import load_players
         loaded_players = load_players()
         for token, p_data in loaded_players.items():
-            self.players[token] = PlayerInfo(name=p_data["name"], connected=False)
+            self.players[token] = PlayerInfo(
+                name=p_data["name"],
+                connected=False,
+                character_sheet=p_data.get("character_sheet", {}),
+            )
         if loaded_players:
             logger.info("Loaded %d players from disk", len(loaded_players))
 
@@ -56,12 +61,36 @@ class ConnectionManager:
         Called by the DM via POST /api/players before the player connects.
         """
         self.players[token] = PlayerInfo(name=name)
-        
+
         # Save to disk
         from server.store import save_players
-        save_players({t: {"name": p.name} for t, p in self.players.items()})
-        
+        save_players({
+            t: {"name": p.name, "character_sheet": p.character_sheet}
+            for t, p in self.players.items()
+        })
+
         logger.info("Registered player '%s' with token %s…", name, token[:8])
+
+    # ------------------------------------------------------------------
+    # Character Sheet
+    # ------------------------------------------------------------------
+
+    def get_player_sheet(self, token: str) -> dict:
+        """Return the stored character sheet for a player, or empty dict."""
+        info = self.players.get(token)
+        return info.character_sheet if info else {}
+
+    def set_player_sheet(self, token: str, sheet: dict) -> None:
+        """Store a character sheet for a player and persist to disk."""
+        info = self.players.get(token)
+        if info is None:
+            return
+        info.character_sheet = sheet
+        from server.store import save_players
+        save_players({
+            t: {"name": p.name, "character_sheet": p.character_sheet}
+            for t, p in self.players.items()
+        })
 
     def list_players(self) -> list[dict[str, Any]]:
         """Return all registered players with their connection status."""

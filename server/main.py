@@ -225,6 +225,18 @@ async def ws_host(websocket: WebSocket, token: str = "") -> None:
                 save_combat_state(data.get("state", {}))
                 continue
 
+            if event_type == "request_character_sheet":
+                target_token = data.get("token", "")
+                sheet = manager.get_player_sheet(target_token)
+                player_info = manager.players.get(target_token)
+                await manager.send_to_host({
+                    "type": "character_sheet_data",
+                    "token": target_token,
+                    "name": player_info.name if player_info else "",
+                    "sheet": sheet,
+                })
+                continue
+
             if event_type == "chat":
                 await manager.broadcast_public(
                     {"type": "chat", "sender": "DM", "message": data.get("message", "")}
@@ -290,6 +302,16 @@ async def ws_player(websocket: WebSocket, token: str = "") -> None:
                     sender=player_name,
                     message=data.get("message", ""),
                 )
+
+            elif event_type == "character_sheet_update":
+                sheet = data.get("sheet", {})
+                manager.set_player_sheet(token, sheet)
+                await manager.send_to_host({
+                    "type": "character_sheet_data",
+                    "token": token,
+                    "name": player_name,
+                    "sheet": sheet,
+                })
 
             elif event_type == "dice_roll":
                 result = data.get("result", 0)
