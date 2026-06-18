@@ -214,10 +214,16 @@ async def ws_host(websocket: WebSocket, token: str = "") -> None:
         return
 
     try:
+        from server.store import load_combat_state, save_combat_state
+        await websocket.send_json({"type": "combat_init", "state": load_combat_state()})
         await manager.broadcast_public({"type": "host_connected"})
         while True:
             data: dict[str, Any] = await websocket.receive_json()
             event_type = data.get("type", "")
+
+            if event_type == "combat_update":
+                save_combat_state(data.get("state", {}))
+                continue
 
             if event_type == "chat":
                 await manager.broadcast_public(

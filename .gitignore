@@ -39,3 +39,4 @@ Thumbs.db
 
 # Agent artifacts
 .atl/
+.data/

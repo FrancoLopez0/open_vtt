@@ -23,6 +23,7 @@ def client():
 def test_dm_connection(client):
     """Test that the DM can connect with the correct token."""
     with client.websocket_connect(f"/ws/host?token={HOST_TOKEN}") as websocket:
+        websocket.receive_json() # combat_init
         data = websocket.receive_json()
         assert data["type"] == "host_connected"
 
@@ -48,6 +49,7 @@ def test_player_registration_and_connection(client):
 
     # DM connects
     with client.websocket_connect(f"/ws/host?token={HOST_TOKEN}") as dm_ws:
+        dm_ws.receive_json() # combat_init
         dm_ws.receive_json() # host_connected
 
         # Player connects
@@ -72,6 +74,7 @@ def test_chat_transmission(client):
     player_token = response.json()["token"]
 
     with client.websocket_connect(f"/ws/host?token={HOST_TOKEN}") as dm_ws:
+        dm_ws.receive_json() # combat_init
         dm_ws.receive_json() # host_connected
 
         with client.websocket_connect(f"/ws/player?token={player_token}") as player_ws:
@@ -105,7 +108,8 @@ def test_dice_roll_events(client):
     player_token = response.json()["token"]
 
     with client.websocket_connect(f"/ws/host?token={HOST_TOKEN}") as dm_ws:
-        dm_ws.receive_json()
+        dm_ws.receive_json() # combat_init
+        dm_ws.receive_json() # host_connected
 
         with client.websocket_connect(f"/ws/player?token={player_token}") as player_ws:
             player_ws.receive_json() # welcome
@@ -145,7 +149,8 @@ def test_plugin_message_routing(client):
     player_token = response.json()["token"]
 
     with client.websocket_connect(f"/ws/host?token={HOST_TOKEN}") as dm_ws:
-        dm_ws.receive_json()
+        dm_ws.receive_json() # combat_init
+        dm_ws.receive_json() # host_connected
 
         with client.websocket_connect(f"/ws/player?token={player_token}") as player_ws:
             player_ws.receive_json() # welcome
