@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import PluginSlot from '../components/PluginSlot.tsx'
 import { CombatEngine } from '../components/CombatEngine.tsx'
 
+// ── Types ─────────────────────────────────────────────────────────────────
 export interface Player {
   name: string
   token: string
@@ -17,9 +18,76 @@ export interface ChatEntry {
   text: string
 }
 
+interface CharacterSheet {
+  character_name: string
+  char_class: string
+  level: number
+  race: string
+  hp: number
+  max_hp: number
+  armor_class: number
+  speed: number
+  strength: number
+  dexterity: number
+  constitution: number
+  intelligence: number
+  wisdom: number
+  charisma: number
+  proficiency_bonus: number
+  background: string
+  traits: string
+  equipment: string
+  conditions: string[]
+}
+
+interface PluginMeta {
+  name: string
+  version?: string
+  description?: string
+  dm_widget?: string | null
+  player_widget?: string | null
+}
+
+type ActiveTab = 'dashboard' | 'combat' | 'plugins'
+
+const ABILITY_KEYS = [
+  { key: 'strength',      label: 'STR' },
+  { key: 'dexterity',    label: 'DEX' },
+  { key: 'constitution', label: 'CON' },
+  { key: 'intelligence', label: 'INT' },
+  { key: 'wisdom',       label: 'WIS' },
+  { key: 'charisma',     label: 'CHA' },
+] as const
+
+const modifier = (score: number) => {
+  const m = Math.floor((score - 10) / 2)
+  return m >= 0 ? `+${m}` : `${m}`
+}
+
+const CONDITION_CLASS: Record<string, string> = {
+  saludable: 'healthy', healthy: 'healthy',
+  inspirado: 'inspired', inspired: 'inspired',
+  escondido: 'hidden', hidden: 'hidden',
+  encantado: 'charmed', charmed: 'charmed',
+  aturdido: 'stunned', stunned: 'stunned',
+  cegado: 'blinded', blinded: 'blinded',
+  envenenado: 'poisoned', poisoned: 'poisoned',
+}
+const conditionClass = (c: string) => CONDITION_CLASS[c.toLowerCase()] ?? 'default'
+
 const WS_URL = (token: string) =>
   `ws://${window.location.host}/ws/host?token=${encodeURIComponent(token)}`
 
+// ── Sandbox default JSON ─────────────────────────────────────────────────
+const SANDBOX_DEFAULT = `{
+  "id": "my-plugin",
+  "name": "My Plugin",
+  "description": "Custom plugin manifest.",
+  "version": "1.0.0",
+  "category": "Custom"
+}`
+
+// ─────────────────────────────────────────────────────────────────────────
 export default function DMView() {
   const [searchParams] = useSearchParams()
   const hostToken = searchParams.get('token') ?? (import.meta.env.DEV ? 'dev_host' : '')
@@ -30,12 +98,21 @@ export default function DMView() {
   const [players, setPlayers] = useState<Player[]>([])
   const [newPlayerName, setNewPlayerName] = useState('')
   const [creatingPlayer, setCreatingPlayer] = useState(false)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'combat'>('dashboard')
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard')
   const [initialCombatState, setInitialCombatState] = useState<any>(null)
+
+  // Sheet state
+  const [selectedPlayerToken, setSelectedPlayerToken] = useState<string | null>(null)
+  const [playerSheets, setPlayerSheets] = useState<Record<string, CharacterSheet>>({})
+
+  // Plugins state
+  const [plugins, setPlugins] = useState<PluginMeta[]>([])
+  const [sandboxJson, setSandboxJson] = useState(SANDBOX_DEFAULT)
+  const [sandboxMsg, setSandboxMsg] = useState('')
 
   const wsRef = useRef<WebSocket | null>(null)
   const messageQueue = useRef<any[]>([])
-  const logEndRef = useRef<HTMLDivElement>(null)
+  const logEndRef = useRef<HTMLDivElement>(null!)
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -47,28 +124,42 @@ export default function DMView() {
 
   const fetchPlayers = useCallback(async () => {
     try {
-      const res = await fetch('/api/players', {
-        headers: { 'X-Host-Token': hostToken },
-      })
+      const res = await fetch('/api/players', { headers: { 'X-Host-Token': hostToken } })
       if (res.ok) {
         const playersData = await res.json()
         setPlayers(playersData)
         window.__VTT_PLAYERS__ = playersData
         window.dispatchEvent(new CustomEvent('vtt-players-update', { detail: playersData }))
       }
-    } catch {
-      // silently retry
-    }
+    } catch { /* silently retry */ }
   }, [hostToken])
 
-  useEffect(() => {
-    if (!hostToken) {
-      setStatus('error')
-      return
-    }
+  const fetchPlugins = useCallback(async () => {
+    try {
+      const res = await fetch('/api/plugins')
+      if (res.ok) setPlugins(await res.json())
+    } catch { /* ignore */ }
+  }, [])
 
-    let ws: WebSocket | null = null;
-    let reconnectTimeout: any;
+  // ── Fetch plugins when tab becomes active ────────────────────────────
+  useEffect(() => {
+    if (activeTab === 'plugins') fetchPlugins()
+  }, [activeTab, fetchPlugins])
+
+  // ── Request sheet when player is selected ────────────────────────────
+  useEffect(() => {
+    if (!selectedPlayerToken) return
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'request_character_sheet', token: selectedPlayerToken }))
+    }
+  }, [selectedPlayerToken])
+
+  // ── WebSocket lifecycle ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!hostToken) { setStatus('error'); return }
+
+    let ws: WebSocket | null = null
+    let reconnectTimeout: any
 
     const connect = () => {
       ws = new WebSocket(WS_URL(hostToken))
@@ -78,10 +169,8 @@ export default function DMView() {
         setStatus('connected')
         appendLog({ type: 'system', text: 'Connected to game session.' })
         fetchPlayers()
-        
         while (messageQueue.current.length > 0) {
-          const msg = messageQueue.current.shift()
-          ws.send(JSON.stringify(msg))
+          ws!.send(JSON.stringify(messageQueue.current.shift()))
         }
       }
 
@@ -101,19 +190,17 @@ export default function DMView() {
               break
             case 'player_connected':
             case 'player_disconnected':
-              appendLog({
-                type: 'system',
-                text: `${data.name} ${data.type === 'player_connected' ? 'joined' : 'left'}.`,
-              })
+              appendLog({ type: 'system', text: `${data.name} ${data.type === 'player_connected' ? 'joined' : 'left'}.` })
               fetchPlayers()
               break
             case 'plugin_message':
               window.dispatchEvent(new CustomEvent('plugin-message', { detail: data }))
               break
             case 'combat_init':
-              if (data.state && Object.keys(data.state).length > 0) {
-                setInitialCombatState(data.state)
-              }
+              if (data.state && Object.keys(data.state).length > 0) setInitialCombatState(data.state)
+              break
+            case 'character_sheet_data':
+              setPlayerSheets((prev) => ({ ...prev, [data.token]: data.sheet }))
               break
           }
         } catch {}
@@ -121,20 +208,14 @@ export default function DMView() {
 
       ws.onclose = () => {
         setStatus('disconnected')
-        appendLog({ type: 'system', text: 'Disconnected. Reconnecting in 3s...' })
-        reconnectTimeout = setTimeout(() => {
-          setStatus('connecting')
-          connect()
-        }, 3000)
+        appendLog({ type: 'system', text: 'Disconnected. Reconnecting in 3s…' })
+        reconnectTimeout = setTimeout(() => { setStatus('connecting'); connect() }, 3000)
       }
 
-      ws.onerror = () => {
-        setStatus('error')
-      }
+      ws.onerror = () => setStatus('error')
     }
 
     connect()
-
     return () => {
       clearTimeout(reconnectTimeout)
       if (ws) ws.close()
@@ -145,7 +226,6 @@ export default function DMView() {
   useEffect(() => {
     const handleSendWs = (event: any) => {
       if (!wsRef.current) return
-      
       if (wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify(event.detail))
       } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
@@ -168,16 +248,10 @@ export default function DMView() {
     try {
       const res = await fetch('/api/players', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Host-Token': hostToken,
-        },
+        headers: { 'Content-Type': 'application/json', 'X-Host-Token': hostToken },
         body: JSON.stringify({ name: newPlayerName.trim() }),
       })
-      if (res.ok) {
-        setNewPlayerName('')
-        fetchPlayers()
-      }
+      if (res.ok) { setNewPlayerName(''); fetchPlayers() }
     } finally {
       setCreatingPlayer(false)
     }
@@ -197,164 +271,408 @@ export default function DMView() {
   const statusClass = status === 'connected' ? 'badge-connected' : status === 'error' ? 'badge-disconnected' : 'badge-waiting'
   const statusLabel = status === 'connected' ? 'Online' : status === 'error' ? 'Error' : 'Connecting…'
 
+  const selectedSheet = selectedPlayerToken ? playerSheets[selectedPlayerToken] : null
+  const selectedPlayer = selectedPlayerToken ? players.find(p => p.token === selectedPlayerToken) : null
+
+  // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="layout-full flex items-center justify-center p-6">
-      
-      <div className="glass-panel-deep flex flex-col w-full h-full overflow-hidden" style={{ borderRadius: '1rem', boxShadow: '0 30px 60px rgba(0,0,0,0.9)' }}>
-        
-        <header className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--color-border)', background: 'linear-gradient(to bottom, rgba(0,0,0,0.8), rgba(0,0,0,0.4))' }}>
-          <div className="flex items-center gap-3">
-            <span className="text-gold text-xl">🐉</span>
-            <span className="font-display text-lg tracking-wider text-gold-bright">OPEN VTT</span>
+    <div className="layout-full">
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <header style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '8px 20px', borderBottom: '1px solid var(--color-border)',
+        background: 'linear-gradient(to bottom, rgba(0,0,0,0.9), rgba(6,6,14,0.8))',
+        flexShrink: 0, gap: '16px',
+      }}>
+        <div className="flex items-center gap-3">
+          <span style={{ fontSize: '22px' }}>🐉</span>
+          <div>
+            <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>DM Workspace</div>
+            <div className="font-display" style={{ fontSize: '15px', color: 'var(--color-amber-bright)', letterSpacing: '0.04em' }}>Open VTT</div>
           </div>
-          
-          <div className="flex gap-2">
-            <button className={`btn ${activeTab === 'dashboard' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
-            <button className="btn btn-ghost text-muted">Campaigns</button>
-            <button className="btn btn-ghost text-muted">Maps</button>
-            <button className={`btn ${activeTab === 'combat' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab('combat')}>Combat</button>
-            <button className="btn btn-ghost text-muted">Rules</button>
-            <button className="btn btn-ghost text-muted">Community</button>
+        </div>
+
+        {/* Tab switcher */}
+        <div className="tab-switcher">
+          {(['dashboard', 'combat', 'plugins'] as ActiveTab[]).map(tab => (
+            <button
+              key={tab}
+              className={`tab-switcher-item${activeTab === tab ? ' active' : ''}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab === 'dashboard' ? '⚡ Dashboard' : tab === 'combat' ? '⚔️ Combat' : '🔌 Plugins'}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="font-display text-sm" style={{ color: 'var(--color-amber)' }}>Dungeon Master</div>
+            <div className={`badge ${statusClass} mt-1`}>{statusLabel}</div>
           </div>
-          
-          <div className="flex items-center gap-4">
-            <div className="relative glass-panel-light px-3 py-1 flex items-center gap-2">
-              <span className="text-muted">🔍</span>
-              <input type="text" placeholder="Dark Iron" className="bg-transparent border-none outline-none text-sm w-32 text-muted" disabled style={{ background: 'transparent', border: 'none' }} />
-            </div>
-            <div className="text-right flex flex-col items-end">
-              <div className="font-display text-sm text-gold">DM Elara</div>
-              <div className={`badge ${statusClass} mt-1`}>{statusLabel}</div>
-            </div>
-            <div className="w-10 h-10 rounded-full border overflow-hidden" style={{ width: '40px', height: '40px', borderRadius: '50%', border: '1px solid var(--color-gold-muted)', backgroundColor: 'black' }}>
-              <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=Elara&backgroundColor=transparent" alt="DM" style={{ width: '100%', height: '100%' }} />
-            </div>
+          <div style={{ width: '36px', height: '36px', borderRadius: '50%', border: '2px solid var(--color-amber-dim)', overflow: 'hidden', background: '#06060e' }}>
+            <img src="https://api.dicebear.com/7.x/adventurer/svg?seed=DM&backgroundColor=transparent" alt="DM" style={{ width: '100%', height: '100%' }} />
           </div>
-        </header>
+        </div>
+      </header>
 
-        <div className="flex flex-row flex-1 overflow-hidden p-8 gap-8">
-          
-          <aside className="flex flex-col ornate-frame glass-panel-deep overflow-hidden flex-shrink-0" style={{ width: '320px' }}>
-            <div className="py-3 px-4 text-center glass-panel-light" style={{ borderBottom: '1px solid var(--color-border)', borderRadius: '0' }}>
-              <h3 className="font-display text-sm text-gold-bright tracking-widest uppercase">Party Chat & Rolls</h3>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-              {log.map((entry) => (
-                <div key={entry.id} className={`chat-message ${entry.type === 'roll' ? 'is-roll' : entry.type === 'secret' ? 'is-secret' : ''}`}>
-                  <span className={`chat-sender ${entry.sender === 'DM' ? 'is-dm' : entry.type === 'system' ? 'is-system' : ''}`}>
-                    {entry.type === 'system' ? 'System' : entry.sender}
-                  </span>
-                  <span className="chat-text">{entry.text}</span>
-                </div>
-              ))}
-              <div ref={logEndRef} />
-            </div>
-            
-            <div className="p-3 flex gap-2 glass-panel-deep" style={{ borderTop: '1px solid var(--color-border)', borderRadius: '0' }}>
-              <input
-                type="text"
-                placeholder="Message..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-                className="flex-1"
-                disabled={status !== 'connected'}
-              />
-              <button className="btn btn-primary px-3" onClick={sendChat} disabled={!chatInput.trim() || status !== 'connected'}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-              </button>
-            </div>
-          </aside>
+      {/* ── Body ───────────────────────────────────────────────────── */}
+      <div className="flex flex-row flex-1 overflow-hidden">
 
-          <main className="flex-1 flex flex-col min-w-0">
-            {activeTab === 'dashboard' ? (
-              <>
-                <div className="mb-4 flex items-end justify-between pb-2 px-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  <h2 className="font-display text-2xl text-primary tracking-wide">DM DASHBOARD <span className="text-muted">- The Shadowed Halls</span></h2>
-                </div>
+        {/* ── Left sidebar: Chat ──────────────────────────────────── */}
+        <aside className="flex flex-col flex-shrink-0 overflow-hidden" style={{ width: '280px', background: 'var(--color-bg-deep)', borderRight: '1px solid var(--color-border)' }}>
+          <div className="py-2 px-3" style={{ borderBottom: '1px solid var(--color-border)', background: 'rgba(0,0,0,0.4)' }}>
+            <h3 className="font-display text-xs tracking-widest uppercase" style={{ color: 'var(--color-amber-bright)' }}>Party Chat</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+            {log.map((entry) => (
+              <div key={entry.id} className={`chat-message ${entry.type === 'roll' ? 'is-roll' : entry.type === 'secret' ? 'is-secret' : ''}`}>
+                <span className={`chat-sender ${entry.sender === 'DM' ? 'is-dm' : entry.type === 'system' ? 'is-system' : ''}`}>
+                  {entry.type === 'system' ? 'System' : entry.sender}
+                </span>
+                <span className="chat-text">{entry.text}</span>
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+          <div className="p-2 flex gap-2" style={{ borderTop: '1px solid var(--color-border)' }}>
+            <input
+              type="text"
+              placeholder="Message…"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+              className="flex-1"
+              disabled={status !== 'connected'}
+            />
+            <button className="btn btn-primary px-3" onClick={sendChat} disabled={!chatInput.trim() || status !== 'connected'}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </aside>
 
-                <div className="flex flex-row gap-6 h-full min-h-0">
-                  
-                  <div className="flex-1 flex flex-col min-w-0 glass-panel-light p-4">
-                    <div className="flex justify-between items-center mb-4">
-                      <h3 className="font-display text-sm text-gold uppercase tracking-wider">Connected Players</h3>
-                    </div>
+        {/* ── Main content ────────────────────────────────────────── */}
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-                    <div className="flex gap-2 mb-4">
-                      <input
-                        type="text"
-                        placeholder="Invite new player..."
-                        value={newPlayerName}
-                        onChange={(e) => setNewPlayerName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && createPlayer()}
-                        className="flex-1"
-                      />
-                      <button className="btn btn-ghost text-xs px-4" onClick={createPlayer} disabled={creatingPlayer || !newPlayerName.trim()}>
-                        Add
-                      </button>
-                    </div>
+          {/* ── DASHBOARD TAB ─────────────────────────────────────── */}
+          {activeTab === 'dashboard' && (
+            <div className="flex flex-row flex-1 overflow-hidden p-4 gap-4">
 
-                    <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-3">
-                      {players.length === 0 ? (
-                        <div className="text-center p-8 text-muted italic text-sm">
-                          The tavern is empty. Invite players to begin.
-                        </div>
-                      ) : (
-                        players.map(p => (
-                          <div key={p.token} className="glass-panel-deep flex items-center p-3">
-                            <div className="relative flex-shrink-0 mr-4" style={{ width: '48px', height: '48px', borderRadius: '50%', border: '1px solid var(--color-gold-muted)', backgroundColor: '#0a0a0a' }}>
-                               <img src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${p.name}&backgroundColor=transparent`} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                               <div className="absolute" style={{ bottom: 0, right: 0, width: '14px', height: '14px', borderRadius: '50%', border: '2px solid black', backgroundColor: p.connected ? 'var(--color-success)' : 'var(--color-error)' }}></div>
+              {/* Player list + invite */}
+              <div className="flex flex-col gap-3 flex-shrink-0 overflow-hidden" style={{ width: '260px' }}>
+                <div className="panel-widget flex-1 overflow-hidden">
+                  <div className="panel-widget-header">
+                    <span className="size-badge">1x2</span>
+                    <span className="panel-widget-title">Connected Players</span>
+                  </div>
+                  <div className="flex gap-2 p-3" style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    <input
+                      type="text"
+                      placeholder="Invite player…"
+                      value={newPlayerName}
+                      onChange={(e) => setNewPlayerName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && createPlayer()}
+                      className="flex-1"
+                    />
+                    <button className="btn btn-ghost text-xs px-3" onClick={createPlayer} disabled={creatingPlayer || !newPlayerName.trim()}>
+                      Add
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
+                    {players.length === 0 ? (
+                      <div className="text-center p-6 text-muted italic text-xs">The tavern is empty. Invite players to begin.</div>
+                    ) : (
+                      players.map(p => {
+                        const sheet = playerSheets[p.token]
+                        const hpPct = sheet?.max_hp ? Math.min(100, Math.round((sheet.hp / sheet.max_hp) * 100)) : 0
+                        const hpClass = hpPct >= 60 ? 'hp-high' : hpPct >= 30 ? 'hp-mid' : 'hp-low'
+                        return (
+                          <div key={p.token} style={{
+                            background: 'var(--color-bg-raised)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 'var(--radius-md)',
+                            padding: '10px',
+                            cursor: 'pointer',
+                            transition: 'border-color var(--transition-fast)',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--color-border-amber)')}
+                          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <div style={{ position: 'relative', flexShrink: 0 }}>
+                                <div style={{ width: '36px', height: '36px', borderRadius: '50%', overflow: 'hidden', border: `2px solid ${p.connected ? 'var(--color-green-active)' : 'var(--color-error)'}`, background: '#06060e' }}>
+                                  <img src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${p.name}&backgroundColor=transparent`} alt={p.name} style={{ width: '100%', height: '100%' }} />
+                                </div>
+                                <div style={{ position: 'absolute', bottom: 0, right: 0, width: '10px', height: '10px', borderRadius: '50%', border: '2px solid var(--color-bg-deep)', backgroundColor: p.connected ? 'var(--color-green-active)' : 'var(--color-error)' }} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-display truncate" style={{ fontSize: '13px', color: 'var(--color-text-primary)' }}>{p.name}</div>
+                                {sheet?.char_class && (
+                                  <div style={{ fontSize: '10px', color: 'var(--color-text-muted)' }}>{sheet.char_class} • Lv {sheet.level}</div>
+                                )}
+                              </div>
                             </div>
-                            
-                            <div className="flex-1 min-w-0">
-                               <div className="flex justify-between items-center">
-                                  <span className="font-display text-lg text-primary truncate">{p.name}</span>
-                                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: p.connected ? 'var(--color-success)' : 'var(--color-error)' }}>
-                                    {p.connected ? 'Online' : 'Offline'}
-                                  </span>
-                               </div>
-                               <div className="mt-2">
-                                 <button
-                                   className="btn btn-ghost flex justify-center items-center gap-2 w-full text-xs py-1 px-3"
-                                   onClick={() => {
-                                     navigator.clipboard.writeText(p.join_url);
-                                     appendLog({ type: 'system', text: `Enlace de ${p.name} copiado al portapapeles.` });
-                                   }}
-                                   title="Copiar enlace de invitación"
-                                 >
-                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                   Copiar Link
-                                 </button>
-                               </div>
+                            {sheet && (
+                              <div className="hero-hp-bar mb-2">
+                                <div className={`hp-fill ${hpClass}`} style={{ width: `${hpPct}%` }} />
+                              </div>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                className="btn btn-ghost text-xs flex-1"
+                                style={{ padding: '3px 6px' }}
+                                onClick={() => setSelectedPlayerToken(p.token === selectedPlayerToken ? null : p.token)}
+                              >
+                                📋 View Sheet
+                              </button>
+                              <button
+                                className="btn btn-ghost text-xs"
+                                style={{ padding: '3px 6px' }}
+                                onClick={() => {
+                                  navigator.clipboard.writeText(p.join_url)
+                                  appendLog({ type: 'system', text: `Link for ${p.name} copied.` })
+                                }}
+                                title="Copy invite link"
+                              >
+                                🔗
+                              </button>
                             </div>
                           </div>
-                        ))
-                      )}
-                    </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Plugins area */}
+              <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                <div className="panel-widget flex-1 overflow-hidden">
+                  <div className="panel-widget-header">
+                    <span className="size-badge">2x2</span>
+                    <span className="panel-widget-title">Active Plugins & Tools</span>
+                    <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: '11px' }}>⚙️ Manage</button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <PluginSlot role="dm" />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Fichas de Héroe panel ───────────────────────── */}
+              {players.length > 0 && (
+                <div className="fichas-panel">
+                  <div className="fichas-panel-header">
+                    <span className="fichas-panel-label">Fichas de Héroe</span>
+                    <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: '10px' }}>+ Añadir</button>
                   </div>
 
-                  <main className="flex-1 flex flex-col min-w-0 glass-panel p-8">
-                    <div className="flex justify-between items-center mb-6 pb-2" style={{ borderBottom: '1px solid var(--color-border)' }}>
-                      <h3 className="font-display text-sm text-gold uppercase tracking-wider">Active Plugins & Tools</h3>
-                      <button className="btn btn-ghost">⚙️ Manage</button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                      <PluginSlot role="dm" />
-                    </div>
-                  </main>
-                  
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col min-h-0">
-                <CombatEngine players={players} initialState={initialCombatState} />
-              </div>
-            )}
-          </main>
+                  {/* Thumbnail strip */}
+                  <div className="hero-thumbnail-strip">
+                    {players.map(p => (
+                      <div key={p.token} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div
+                          className={`hero-thumb${selectedPlayerToken === p.token ? ' selected' : ''}`}
+                          onClick={() => setSelectedPlayerToken(p.token === selectedPlayerToken ? null : p.token)}
+                        >
+                          <img src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${p.name}&backgroundColor=transparent`} alt={p.name} />
+                        </div>
+                        <span className="hero-thumb-name">{p.name.split(' ')[0]}</span>
+                      </div>
+                    ))}
+                  </div>
 
-        </div>
+                  {/* Expanded hero card */}
+                  {selectedPlayer ? (
+                    <div className="hero-card">
+                      {/* Header */}
+                      <div className="hero-card-header">
+                        <div className="hero-card-avatar">
+                          <img src={`https://api.dicebear.com/7.x/adventurer/svg?seed=${selectedPlayer.name}&backgroundColor=transparent`} alt={selectedPlayer.name} />
+                        </div>
+                        <div className="hero-card-identity">
+                          {selectedSheet?.level && <div className="hero-card-level">Nivel {selectedSheet.level}</div>}
+                          <div className="hero-card-name">{selectedSheet?.character_name || selectedPlayer.name}</div>
+                          <div className="hero-card-sub">
+                            {selectedSheet?.char_class ? `${selectedSheet.char_class}${selectedSheet.race ? ` • ${selectedSheet.race}` : ''}` : 'No sheet data yet'}
+                            {` • Played by ${selectedPlayer.name}`}
+                          </div>
+                        </div>
+                      </div>
+
+                      {selectedSheet ? (
+                        <>
+                          {/* HP */}
+                          <div className="hero-hp-section">
+                            <div className="hero-hp-labels">
+                              <span className="hero-hp-label">Vida Acumulada</span>
+                              <span className="hero-hp-value">{selectedSheet.hp} / {selectedSheet.max_hp}</span>
+                            </div>
+                            <div className="hero-hp-bar">
+                              <div
+                                className={`hp-fill ${selectedSheet.max_hp > 0 && selectedSheet.hp / selectedSheet.max_hp >= 0.6 ? 'hp-high' : selectedSheet.hp / selectedSheet.max_hp >= 0.3 ? 'hp-mid' : 'hp-low'}`}
+                                style={{ width: `${selectedSheet.max_hp > 0 ? Math.min(100, Math.round(selectedSheet.hp / selectedSheet.max_hp * 100)) : 0}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Core stats: AC / Speed / Proficiency */}
+                          <div>
+                            <div className="attr-section-label">Armadura CA · Velocidad · Prof.</div>
+                            <div className="hero-stat-row">
+                              <div className="hero-stat-cell">
+                                <span className="hero-stat-value">{selectedSheet.armor_class}</span>
+                                <span className="hero-stat-label">CA</span>
+                              </div>
+                              <div className="hero-stat-cell">
+                                <span className="hero-stat-value">{selectedSheet.speed}</span>
+                                <span className="hero-stat-label">Speed</span>
+                              </div>
+                              <div className="hero-stat-cell">
+                                <span className="hero-stat-value">+{selectedSheet.proficiency_bonus}</span>
+                                <span className="hero-stat-label">Prof</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Ability scores */}
+                          <div>
+                            <div className="attr-section-label">Atributos y Tiradas del DM</div>
+                            <div className="attr-grid-6">
+                              {ABILITY_KEYS.map(({ key, label }) => (
+                                <div className="attr-cell" key={key}>
+                                  <span className="attr-cell-label">{label}</span>
+                                  <span className="attr-cell-value">{selectedSheet[key]}</span>
+                                  <span className="attr-cell-mod">{modifier(selectedSheet[key])}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Conditions */}
+                          {selectedSheet.conditions?.length > 0 && (
+                            <div>
+                              <div className="attr-section-label">Condiciones Activas ({selectedSheet.conditions.length})</div>
+                              <div className="conditions-section">
+                                {selectedSheet.conditions.map((c, i) => (
+                                  <span key={i} className={`condition-badge ${conditionClass(c)}`}>{c}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-center text-muted italic" style={{ fontSize: '11px', padding: '20px 0' }}>
+                          Awaiting character data…
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted italic" style={{ fontSize: '11px', padding: '24px 0' }}>
+                      Select a hero to view their sheet.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── COMBAT TAB ────────────────────────────────────────── */}
+          {activeTab === 'combat' && (
+            <div className="flex-1 flex flex-col min-h-0 p-4">
+              <CombatEngine players={players} initialState={initialCombatState} />
+            </div>
+          )}
+
+          {/* ── PLUGINS TAB ───────────────────────────────────────── */}
+          {activeTab === 'plugins' && (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Tab header */}
+              <div className="p-5 flex-shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
+                <div className="flex items-center gap-3 mb-1">
+                  <span style={{ fontSize: '22px' }}>🔌</span>
+                  <div>
+                    <h2 className="font-display" style={{ fontSize: '17px', color: 'var(--color-text-primary)' }}>Plugin Manager & Store</h2>
+                    <p style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Install and activate modules that extend the game kernel at runtime.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="plugin-manager-layout flex-1 overflow-hidden">
+                {/* Plugin list */}
+                <div className="plugin-list-panel">
+                  <div className="p-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--color-border)' }}>
+                    <div style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                      Extension Repository
+                    </div>
+                  </div>
+                  <div className="plugin-list-scroll">
+                    {plugins.length === 0 ? (
+                      <div className="text-center text-muted italic p-8" style={{ fontSize: '12px' }}>No plugins installed.</div>
+                    ) : (
+                      plugins.map((plugin, i) => (
+                        <div className="plugin-entry" key={i}>
+                          <div className="plugin-entry-info">
+                            <div className="plugin-entry-title">
+                              <span className="plugin-entry-name">{plugin.name}</span>
+                              {plugin.version && <span className="version-badge">v{plugin.version}</span>}
+                              {plugin.dm_widget && <span className="category-tag">DM Widget</span>}
+                              {plugin.player_widget && <span className="category-tag">Player Widget</span>}
+                            </div>
+                            <div className="plugin-entry-desc">{plugin.description || 'No description provided.'}</div>
+                            <div className="plugin-entry-meta">
+                              {plugin.dm_widget ? 'Has DM UI' : ''}
+                              {plugin.dm_widget && plugin.player_widget ? ' · ' : ''}
+                              {plugin.player_widget ? 'Has Player UI' : ''}
+                              {!plugin.dm_widget && !plugin.player_widget ? 'Backend-only plugin' : ''}
+                            </div>
+                          </div>
+                          <div className="btn-active">✓ Loaded</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Sandbox */}
+                <div className="plugin-sandbox-panel">
+                  <div className="plugin-sandbox-header">
+                    <div className="plugin-sandbox-title">⚗️ Plugin Injection (Sandbox)</div>
+                    <div className="plugin-sandbox-desc">
+                      Write a valid JSON manifest to dynamically hook a new module into the DM Dashboard Core.
+                    </div>
+                  </div>
+                  <textarea
+                    className="plugin-sandbox-editor"
+                    value={sandboxJson}
+                    onChange={e => { setSandboxJson(e.target.value); setSandboxMsg('') }}
+                    spellCheck={false}
+                  />
+                  {sandboxMsg && (
+                    <div style={{ padding: '6px 14px', fontSize: '10px', color: sandboxMsg.startsWith('✓') ? 'var(--color-green-active)' : 'var(--color-error)' }}>
+                      {sandboxMsg}
+                    </div>
+                  )}
+                  <div className="plugin-sandbox-footer">
+                    <button
+                      className="btn-inject"
+                      onClick={() => {
+                        try {
+                          JSON.parse(sandboxJson)
+                          setSandboxMsg('✓ Valid manifest. Injection would happen here.')
+                        } catch {
+                          setSandboxMsg('✗ Invalid JSON. Check syntax and try again.')
+                        }
+                      }}
+                    >
+                      🔌 Inject into Kernel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
       </div>
     </div>
   )
