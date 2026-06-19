@@ -132,6 +132,57 @@ class CoreRPGPlugin:
             except RuntimeError:
                 pass
 
+        elif action in ("adjust_hp", "set_hp", "add_condition", "remove_condition"):
+            target_player = payload.get("target_player")
+            if not target_player:
+                return
+            player_name = self._get_player_name(target_player)
+            sheet_data = self.sheets.get(player_name)
+            if sheet_data is None:
+                sheet_data = self._empty_sheet(player_name)
+
+            if action == "adjust_hp":
+                # delta: positive = heal, negative = damage
+                delta = int(payload.get("delta", 0))
+                hp_max = int(sheet_data.get("hp_max", 1))
+                new_hp = max(0, min(hp_max, int(sheet_data.get("hp_current", 0)) + delta))
+                sheet_data["hp_current"] = new_hp
+
+            elif action == "set_hp":
+                hp_max = int(sheet_data.get("hp_max", 1))
+                new_hp = max(0, min(hp_max, int(payload.get("value", 0))))
+                sheet_data["hp_current"] = new_hp
+
+            elif action == "add_condition":
+                cond = payload.get("condition", "").strip()
+                if cond:
+                    conditions = sheet_data.get("conditions", [])
+                    if cond not in conditions:
+                        conditions.append(cond)
+                    sheet_data["conditions"] = conditions
+
+            elif action == "remove_condition":
+                cond = payload.get("condition", "")
+                conditions = sheet_data.get("conditions", [])
+                sheet_data["conditions"] = [c for c in conditions if c != cond]
+
+            # Persist and broadcast to ALL (DM + player both update)
+            self.sheets[player_name] = sheet_data
+            self._save_sheets()
+            logger.info("DM action '%s' on %s → hp=%s", action, player_name, sheet_data.get("hp_current", "?"))
+
+            from server.state import kernel
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(kernel.send_message("ALL", "core_rpg", {
+                    "action": "sheet_updated",
+                    "player": target_player,
+                    "sheet":  sheet_data,
+                }))
+            except RuntimeError:
+                pass
+
     def _empty_sheet(self, name: str) -> dict[str, Any]:
         return {
             "name":                name,

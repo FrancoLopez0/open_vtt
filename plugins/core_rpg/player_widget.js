@@ -92,9 +92,11 @@ class CoreRPGPlayer extends HTMLElement {
       const payload = data.payload
       if (payload.action === 'sheet_data' || payload.action === 'sheet_updated') {
         this.sheet = { ...this.sheet, ...payload.sheet }
-        this.playerName = payload.player || this.sheet.name
+        // payload.player is a token UUID — use sheet.name for display
+        if (this.sheet.name) this.playerName = this.sheet.name
         this._updateDOM()
       }
+
     }
     window.addEventListener('plugin-message', this._msgHandler)
     this._send({ action: 'get_sheet' })
