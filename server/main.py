@@ -284,7 +284,12 @@ async def ws_player(websocket: WebSocket, token: str = "") -> None:
 
     try:
         await websocket.send_json({"type": "welcome", "name": player_name})
-        await manager.broadcast_public({"type": "player_connected", "name": player_name})
+        await manager.broadcast_public({"type": "player_connected", "name": player_name, "token": token})
+
+        # Fire hook so plugins (e.g. core_rpg) push their stored state
+        # to this player. This restores sheet data on reload/reconnect.
+        kernel.fire("on_player_connect", token=token, name=player_name)
+
         while True:
             data: dict[str, Any] = await websocket.receive_json()
             event_type = data.get("type", "")
@@ -338,6 +343,7 @@ async def ws_player(websocket: WebSocket, token: str = "") -> None:
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
         await manager.broadcast_public({"type": "player_disconnected", "name": player_name})
+        kernel.fire("on_player_disconnect", token=token, name=player_name)
 
 
 # ---------------------------------------------------------------------------

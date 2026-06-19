@@ -12,14 +12,17 @@ interface Combatant {
   hp: number;
   max_hp: number;
   is_player: boolean;
+  token?: string; // for live HP sync
 }
 
 interface CombatEngineProps {
   players: PlayerProp[];
   initialState?: any;
+  // Map of token -> sheet data from the DM view (optional)
+  playerSheets?: Record<string, { hp_current?: number; hp_max?: number; hp?: number; max_hp?: number }>;
 }
 
-export function CombatEngine({ players, initialState }: CombatEngineProps) {
+export function CombatEngine({ players, initialState, playerSheets = {} }: CombatEngineProps) {
   const [combatants, setCombatants] = useState<Combatant[]>(initialState?.combatants || []);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(initialState?.activeTurnId || null);
   const [round, setRound] = useState<number>(initialState?.round || 1);
@@ -39,6 +42,32 @@ export function CombatEngine({ players, initialState }: CombatEngineProps) {
       } 
     }));
   }, [combatants, activeTurnId, round, isActive]);
+
+  // Listen for real-time HP changes from the sheet plugin (core_rpg sheet_updated)
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail;
+      if (data?.plugin !== 'core_rpg') return;
+      const payload = data.payload;
+      if (payload?.action !== 'sheet_updated') return;
+
+      const token: string = payload.player;
+      const sheet = payload.sheet || {};
+      const newHp    = sheet.hp_current ?? sheet.hp    ?? null;
+      const newMaxHp = sheet.hp_max     ?? sheet.max_hp ?? null;
+      if (newHp === null) return;
+
+      setCombatants(prev =>
+        prev.map(c =>
+          c.token === token
+            ? { ...c, hp: newHp, ...(newMaxHp !== null ? { max_hp: newMaxHp } : {}) }
+            : c
+        )
+      );
+    };
+    window.addEventListener('plugin-message', handler);
+    return () => window.removeEventListener('plugin-message', handler);
+  }, []);
 
   const sortedCombatants = [...combatants].sort((a, b) => b.initiative - a.initiative);
 
@@ -64,15 +93,19 @@ export function CombatEngine({ players, initialState }: CombatEngineProps) {
   const addPlayers = () => {
     const newCombatants = [...combatants];
     players.forEach(p => {
-      // Don't add twice
-      if (!newCombatants.find(c => c.name === p.name && c.is_player)) {
+      if (!newCombatants.find(c => c.token === p.token && c.is_player)) {
+        // Read HP from the live sheet data if available
+        const sheet = playerSheets[p.token];
+        const hp    = sheet?.hp_current ?? sheet?.hp    ?? 10;
+        const maxHp = sheet?.hp_max     ?? sheet?.max_hp ?? 10;
         newCombatants.push({
-          id: `player-${p.token}`,
-          name: p.name,
-          initiative: 0,
-          hp: 10, // Default, DM can edit
-          max_hp: 10,
-          is_player: true,
+          id:          `player-${p.token}`,
+          token:       p.token,
+          name:        p.name,
+          initiative:  0,
+          hp,
+          max_hp:      maxHp,
+          is_player:   true,
         });
       }
     });

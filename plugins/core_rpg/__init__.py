@@ -36,8 +36,27 @@ class CoreRPGPlugin:
         for p in manager.list_players():
             if p["token"] == token:
                 return p["name"]
-        # Fallback to token if not found (e.g. DM or testing)
         return token
+
+    @hookimpl
+    def on_player_connect(self, token: str, name: str) -> None:
+        """Push the stored sheet to the player as soon as they connect."""
+        sheet_data = self.sheets.get(name)
+        if not sheet_data:
+            return  # First time connecting — player widget will request via get_sheet
+
+        from server.state import manager
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(manager.send_to_player(token, {
+                "type":    "plugin_message",
+                "plugin":  "core_rpg",
+                "payload": {"action": "sheet_data", "player": token, "sheet": sheet_data},
+            }))
+            logger.info("Pushed stored sheet to reconnecting player '%s'", name)
+        except RuntimeError:
+            pass
 
     @hookimpl
     def on_plugin_message(self, sender: str, plugin: str, payload: dict) -> None:

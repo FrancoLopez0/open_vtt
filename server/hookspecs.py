@@ -48,3 +48,21 @@ class OpenVTTSpec:
             plugin: The target plugin name (e.g. "core_rpg").
             payload: The arbitrary JSON dictionary payload from the frontend.
         """
+
+    @hookspec
+    def on_player_connect(self, token: str, name: str) -> None:
+        """Fired when a player successfully connects via WebSocket.
+
+        Args:
+            token: The player's unique token (UUID).
+            name: The player's display name.
+        """
+
+    @hookspec
+    def on_player_disconnect(self, token: str, name: str) -> None:
+        """Fired when a player's WebSocket connection drops.
+
+        Args:
+            token: The player's unique token (UUID).
+            name: The player's display name.
+        """

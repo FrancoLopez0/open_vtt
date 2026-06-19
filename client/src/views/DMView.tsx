@@ -195,7 +195,14 @@ export default function DMView() {
               break
             case 'plugin_message':
               window.dispatchEvent(new CustomEvent('plugin-message', { detail: data }))
+              // Also sync playerSheets from core_rpg sheet_updated so CombatEngine gets live HP
+              if (data.plugin === 'core_rpg' && data.payload?.action === 'sheet_updated') {
+                const token: string = data.payload.player
+                const sheet = data.payload.sheet || {}
+                if (token) setPlayerSheets((prev) => ({ ...prev, [token]: sheet }))
+              }
               break
+
             case 'combat_init':
               if (data.state && Object.keys(data.state).length > 0) setInitialCombatState(data.state)
               break
@@ -465,9 +472,10 @@ export default function DMView() {
           {/* ── COMBAT TAB ────────────────────────────────────────── */}
           {activeTab === 'combat' && (
             <div className="flex-1 flex flex-col min-h-0 p-4">
-              <CombatEngine players={players} initialState={initialCombatState} />
+              <CombatEngine players={players} initialState={initialCombatState} playerSheets={playerSheets} />
             </div>
           )}
+
 
           {/* ── PLUGINS TAB ───────────────────────────────────────── */}
           {activeTab === 'plugins' && (
