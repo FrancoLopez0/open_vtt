@@ -57,6 +57,47 @@ class CoreRPGPlugin:
             self.sheets[player_name] = sheet_data
             self._save_sheets()
             logger.info("Saved character sheet for %s (token %s)", player_name, target_player)
+
+            # --- Bridge to native character_sheet_data protocol ---
+            # Normalize the plugin schema to the standard format so DM player
+            # cards can display HP bars regardless of which sheet plugin is active.
+            try:
+                from server.state import manager as _mgr
+                stats = {s["name"]: int(s.get("value", 10)) for s in sheet_data.get("stats", [])}
+                normalized = {
+                    "character_name": sheet_data.get("name", ""),
+                    "char_class":     sheet_data.get("class_name", ""),
+                    "race":           sheet_data.get("race", ""),
+                    "level":          int(sheet_data.get("level", 1)),
+                    "hp":             int(sheet_data.get("hp_current", 0)),
+                    "max_hp":         int(sheet_data.get("hp_max", 1)),
+                    "armor_class":    10,
+                    "speed":          30,
+                    "strength":       stats.get("STR", 10),
+                    "dexterity":      stats.get("DEX", 10),
+                    "constitution":   stats.get("CON", 10),
+                    "intelligence":   stats.get("INT", 10),
+                    "wisdom":         stats.get("WIS", 10),
+                    "charisma":       stats.get("CHA", 10),
+                    "proficiency_bonus": 2,
+                    "background":     "",
+                    "traits":         "",
+                    "equipment":      sheet_data.get("inventory", ""),
+                    "conditions":     [],
+                }
+                _mgr.set_player_sheet(target_player, normalized)
+
+                import asyncio
+                loop = asyncio.get_running_loop()
+                loop.create_task(_mgr.send_to_host({
+                    "type":  "character_sheet_data",
+                    "token": target_player,
+                    "name":  player_name,
+                    "sheet": normalized,
+                }))
+            except Exception as _e:
+                logger.warning("Could not bridge sheet to native protocol: %s", _e)
+            # --- End bridge ---
             
             from server.state import kernel
             
